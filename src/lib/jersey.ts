@@ -1,0 +1,122 @@
+import type { JerseySettings, OrderState, PaymentStatus } from "@/integrations/supabase/types";
+
+export const MAX_PROOF_BYTES = 5 * 1024 * 1024;
+export const PROOF_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "application/pdf",
+];
+export const PROOF_ACCEPT = PROOF_TYPES.join(",");
+
+// Parent-facing payment methods. Cash is recorded by the admin only.
+export const PAYMENT_METHODS = [
+  { value: "UPI", label: "UPI" },
+  { value: "QR", label: "Scan QR" },
+  { value: "Bank Transfer", label: "Bank" },
+] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]["value"];
+
+// Set this to the official jersey photo (for example "/jersey-official.png" in /public)
+// once it is ready. Until then the app draws a placeholder jersey.
+export const OFFICIAL_JERSEY_IMAGE: string | null = null;
+
+export function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+export function buildUpiUri(settings: JerseySettings, amount: number, note?: string) {
+  const params = new URLSearchParams({
+    pa: settings.upi_id,
+    pn: settings.payee_name,
+    am: String(amount),
+    cu: "INR",
+  });
+  if (note) params.set("tn", note);
+  return `upi://pay?${params.toString()}`;
+}
+
+export function buildQrUrl(settings: JerseySettings, amount: number, note?: string) {
+  return `https://quickchart.io/qr?size=500&margin=2&text=${encodeURIComponent(buildUpiUri(settings, amount, note))}`;
+}
+
+export function printName(player: { print_name: string | null; full_name: string }) {
+  return (player.print_name || player.full_name.split(" ")[0] || player.full_name).toUpperCase();
+}
+
+export function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+export const ORDER_STATE_TAGS: Record<OrderState, { label: string; tone: Tone } | null> = {
+  none: null,
+  pending: { label: "Awaiting payment", tone: "warn" },
+  submitted: { label: "Ordered · checking", tone: "warn" },
+  verified: { label: "Ordered · paid", tone: "ok" },
+  rejected: { label: "Rejected · redo", tone: "bad" },
+};
+
+export function paymentLabel(status: string) {
+  return PAYMENT_LABELS[status as PaymentStatus] ?? PAYMENT_LABELS.pending;
+}
+
+export const PAYMENT_LABELS: Record<PaymentStatus, { label: string; tone: Tone }> = {
+  pending: { label: "Not paid", tone: "plain" },
+  submitted: { label: "Needs check", tone: "warn" },
+  verified: { label: "Paid & verified", tone: "ok" },
+  rejected: { label: "Rejected", tone: "bad" },
+};
+
+export const ORDER_STATUS_LABELS: Record<string, string> = {
+  new: "Awaiting payment",
+  payment_submitted: "Awaiting payment check",
+  confirmed: "Confirmed",
+  in_production: "In production",
+  ready: "Ready for pickup",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+};
+// Statuses an admin sets by hand. The others follow the payment automatically.
+export const MANUAL_ORDER_STATUSES = [
+  "confirmed",
+  "in_production",
+  "ready",
+  "delivered",
+  "cancelled",
+];
+
+export type Tone = "ok" | "warn" | "bad" | "plain" | "dark" | "brand";
+
+// Orders placed on this device, so parents can come back and see the status.
+const SAVED_KEY = "mms-jersey-orders";
+export type SavedOrder = { orderId: string; token: string; playerName: string };
+
+export function loadSavedOrders(): SavedOrder[] {
+  try {
+    const raw = localStorage.getItem(SAVED_KEY);
+    return raw ? (JSON.parse(raw) as SavedOrder[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveOrder(order: SavedOrder) {
+  try {
+    const rest = loadSavedOrders().filter((o) => o.orderId !== order.orderId);
+    localStorage.setItem(SAVED_KEY, JSON.stringify([order, ...rest].slice(0, 20)));
+  } catch {
+    // Storage can be blocked (private mode). The order is still placed.
+  }
+}
