@@ -142,8 +142,17 @@ export function OrderFlow({
         })}
       </ol>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
-        <div key={step} className="card animate-fade-up">
+      <div
+        className={
+          step === 4
+            ? "mx-auto grid max-w-xl"
+            : "grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
+        }
+      >
+        <div
+          key={step}
+          className={`card animate-fade-up ${step === 4 ? "overflow-hidden p-0" : ""}`}
+        >
           {step < 4 && (
             <div className="mb-6 flex items-center gap-3">
               <span className="grid size-8 flex-none place-items-center rounded-md bg-brand-soft font-display text-sm text-brand">
@@ -307,37 +316,12 @@ export function OrderFlow({
             </div>
           )}
 
-          {step === 4 && placed && (
-            <div className="grid justify-items-center gap-3.5 py-2.5 text-center">
-              <div className="grid size-16 place-items-center rounded-full bg-brand-soft text-brand">
-                <CheckIcon className="size-[34px]" />
-              </div>
-              <div className="label text-brand">Order placed successfully</div>
-              <h3 className="h-lg">Thank you!</h3>
-              <div className="w-full max-w-sm rounded-lg border border-brand/40 bg-brand-soft p-5">
-                <div className="font-condensed text-xs tracking-[0.3em] text-ink-2 uppercase">
-                  Order ID
-                </div>
-                <div className="mt-1 font-display text-4xl text-brand">{placed.order_id}</div>
-              </div>
-              <p className="m-0 max-w-[44ch] text-ink-2">
-                The school will check your payment and confirm {placed.player_name.split(" ")[0]}'s
-                jersey. Keep this order ID. You can check the status any time under My orders.
-              </p>
-              <Tag tone="warn">Payment · waiting for check</Tag>
-              <div className="mt-1.5 flex flex-wrap justify-center gap-2">
-                <Link to="/status" className="pill pill-dark">
-                  My orders
-                </Link>
-                <button type="button" onClick={restart} className="pill pill-ghost">
-                  Order for another child
-                </button>
-              </div>
-            </div>
-          )}
+          {step === 4 && placed && <PlacedReceipt order={placed} onRestart={restart} />}
         </div>
 
-        <aside className="rounded-xl border border-line bg-panel p-5 sm:p-6 lg:sticky lg:top-6">
+        <aside
+          className={`rounded-xl border border-line bg-panel p-5 sm:p-6 lg:sticky lg:top-6 ${step === 4 ? "hidden" : ""}`}
+        >
           <div className="grid aspect-[5/4] place-items-center overflow-hidden rounded-lg bg-[radial-gradient(circle_at_50%_40%,rgba(255,77,18,0.28),#0a0a0a_70%)]">
             <JerseyArt
               image={settings.jersey_image_url}
@@ -372,6 +356,73 @@ export function OrderFlow({
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** The "order placed" card: the child's own jersey on top, then a receipt. */
+function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: () => void }) {
+  const first = order.player_name.split(" ")[0];
+  return (
+    <div>
+      <div className="relative grid h-[280px] place-items-center pt-10 bg-[radial-gradient(circle_at_50%_45%,rgba(255,77,18,0.45),#0a0a0a_72%)]">
+        <span className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 font-condensed text-xs font-bold tracking-[0.16em] text-white uppercase">
+          <CheckIcon className="size-3.5" /> Order placed
+        </span>
+        <JerseyArt
+          name={printName({ print_name: order.print_name, full_name: order.player_name })}
+          number={order.jersey_number != null ? String(order.jersey_number).padStart(2, "0") : ""}
+          className="w-[170px] drop-shadow-[0_22px_26px_rgba(0,0,0,0.7)]"
+        />
+      </div>
+      <div className="p-6 sm:p-8">
+        <h3 className="h-md">Thank you!</h3>
+        <p className="mt-2 text-sm text-ink-2">
+          {first}'s jersey is ordered. The school checks your payment and confirms it.
+        </p>
+        <dl className="mt-3.5">
+          <ReceiptLine label="Player" value={order.player_name} />
+          <ReceiptLine label="Class" value={order.class_name ?? "—"} />
+          <ReceiptLine label="Size" value={order.jersey_size} />
+          <ReceiptLine label="Paid by" value={paymentMethodLabel(order.payment_method)} />
+          <div className="flex items-baseline justify-between py-3 text-sm">
+            <dt className="text-ink-2">Amount</dt>
+            <dd className="font-display text-2xl text-brand">
+              {formatCurrency(Number(order.amount))}
+            </dd>
+          </div>
+        </dl>
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-brand/40 bg-ink px-4 py-3">
+          <span className="font-condensed text-xs tracking-[0.26em] text-ink-2 uppercase">
+            Order ID
+          </span>
+          <span className="font-display text-2xl text-brand">{order.order_id}</span>
+        </div>
+        <div className="mt-3.5">
+          <Tag tone="warn">● Payment · waiting for check</Tag>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <Link to="/status" className="pill px-3">
+            My orders
+          </Link>
+          <button type="button" onClick={onRestart} className="pill pill-ghost px-3">
+            Another child
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function paymentMethodLabel(method: string | null) {
+  return method === "Bank Transfer" ? "Bank transfer" : (method ?? "—");
+}
+
+function ReceiptLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 border-b border-line py-3 text-sm">
+      <dt className="text-ink-2">{label}</dt>
+      <dd className="text-right font-semibold">{value}</dd>
     </div>
   );
 }
