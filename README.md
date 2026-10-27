@@ -1,112 +1,50 @@
-# Steel City Orders
+# MMS Jersey
 
-Build a premium, modern web application called "Steel City Jersey".
+Jersey ordering for MMS parents. The school preloads every player with their name, class, number and size.
+Parents find their child, check the details, pay by UPI, QR or bank transfer, upload the payment
+screenshot and get an order ID. Admins verify or reject each screenshot, record cash paid at the
+office, manage the player list, and change the price, sizes and payment details without any code changes.
 
-This is a school sports jersey ordering portal. The application will use my existing Supabase project "Steel City Jersey" for the database and storage.
+Built with TanStack Start, React, Tailwind and Supabase. It uses free tools only, with no payment gateway.
 
-Create the application with a clean, premium sports-commerce experience that works beautifully on desktop and mobile.
+## Pages
 
-Core purpose:
+| URL | Who | What |
+| --- | --- | --- |
+| `/` | Parents | Landing page and the four-step order form |
+| `/status` | Parents | Orders placed on this device, with live payment status |
+| `/admin` | Admins | Orders, payment checks, cash, players and sizes, settings |
+| `/reset-password` | Admins | Set a new password from the reset email |
 
-Students/players should be able to select their details, choose a jersey size and quantity, place an order, upload payment proof, and receive an order confirmation.
+## Database
 
-Use Supabase for all persistent data and file storage. Do not create a separate backend or mock database.
+Everything lives in a separate `jersey` schema (see `supabase/migrations`), so it can share a Supabase
+project with other apps without touching their tables. The `jersey` schema is not exposed to the
+REST API. The browser only calls the `public.jersey_*` functions, which validate every input.
+Admin functions also check the `jersey.admin_users` allow-list. Payment screenshots go to the
+private `jersey-proofs` storage bucket. Parents can upload to it, and only admins can view it.
 
-Existing Supabase database:
+### Setup
 
-- players table
+1. In the Supabase SQL editor, run `supabase/migrations/20261027130000_jersey_schema.sql`. It is safe to run more than once.
+2. Create the admin login in Authentication → Users (email and password), then add it to the allow-list:
+   ```sql
+   INSERT INTO jersey.admin_users (email) VALUES ('admin@example.com');
+   ```
+3. Copy `.env.example` to `.env` and fill in the project URL and publishable key
+   (Project Settings → API). On Vercel, add the same two variables.
+4. Sign in at `/admin` and fill in **Settings** (price, sizes, UPI ID, bank details). Then add the
+   players under **Players & sizes**. You can paste them straight from Excel, one per line:
+   `name, class, number, size[, name to print]`.
 
-  - id
+## Jersey photo
 
-  - player_name
-
-  - age_group
-
-  - ground_name
-
-  - created_at
-
-- orders table
-
-  - id
-
-  - created_at
-
-  - order_id
-
-  - player_id
-
-  - jersey_size
-
-  - quantity
-
-  - amount
-
-  - payment_status
-
-  - payment_method
-
-  - payment_proof
-
-- orders.player_id is a foreign key to players.id.
-
-- Supabase Storage bucket:
-
-  payment-proofs
-
-Important:
-
-Use the existing database structure. Do not rename existing columns or create duplicate tables unless absolutely required.
-
-Build the initial version with:
-
-1. Premium landing/order page
-
-2. Player selection/details section
-
-3. Jersey size selection
-
-4. Quantity selection
-
-5. Automatic order amount calculation
-
-6. Order summary
-
-7. Payment method selection
-
-8. Payment proof upload to the Supabase "payment-proofs" bucket
-
-9. Order submission to the Supabase orders table
-
-10. Order confirmation screen with the generated order ID
-
-11. Clean validation and error messages
-
-12. Responsive mobile and desktop layouts
-
-The design should feel like a premium professional sports club/school jersey ordering system, not a generic ecommerce template.
-
-Use strong typography, spacious layouts, polished cards, subtle shadows, premium sports visuals, and clear calls to action.
-
-Do not use fake/sample orders or fake database data in the final application.
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/37518b83-a69e-4bac-8bf8-22f57f63e449).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+Put the official jersey image in `public/` and set `OFFICIAL_JERSEY_IMAGE` in `src/lib/jersey.ts`
+(for example `"/jersey-official.png"`). Until then, the app shows a drawn jersey.
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+bun install
+bun run dev
 ```
