@@ -19,9 +19,21 @@ export const PAYMENT_METHODS = [
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]["value"];
 
-// Set this to the official jersey photo (for example "/jersey-official.png" in /public)
-// once it is ready. Until then the app draws a placeholder jersey.
-export const OFFICIAL_JERSEY_IMAGE: string | null = null;
+export const JERSEY_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const MAX_JERSEY_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export type SizeChartRow = JerseySettings["size_chart"][number];
+
+/**
+ * Picks the jersey size for a chest width (inches, armpit to armpit): the smallest size
+ * whose chest is at least that wide, so a child between sizes gets the larger one.
+ * Above the biggest size, it returns the biggest size.
+ */
+export function sizeForChest(chart: SizeChartRow[], chest: number): string | null {
+  if (!(chest > 0) || chart.length === 0) return null;
+  const sorted = [...chart].sort((a, b) => a.chest - b.chest);
+  return (sorted.find((r) => r.chest >= chest) ?? sorted[sorted.length - 1])?.size ?? null;
+}
 
 export function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -75,14 +87,14 @@ export function paymentLabel(status: string) {
 export const PAYMENT_LABELS: Record<PaymentStatus, { label: string; tone: Tone }> = {
   pending: { label: "Not paid", tone: "plain" },
   submitted: { label: "Needs check", tone: "warn" },
-  verified: { label: "Paid & verified", tone: "ok" },
+  verified: { label: "Paid · verified", tone: "ok" },
   rejected: { label: "Rejected", tone: "bad" },
 };
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
   new: "Awaiting payment",
   payment_submitted: "Awaiting payment check",
-  confirmed: "Confirmed",
+  confirmed: "Order confirmed",
   in_production: "In production",
   ready: "Ready for pickup",
   delivered: "Delivered",

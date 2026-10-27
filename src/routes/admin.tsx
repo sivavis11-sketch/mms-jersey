@@ -4,6 +4,8 @@ import {
   CheckCircle2,
   Download,
   ExternalLink,
+  FileSpreadsheet,
+  ImagePlus,
   LogOut,
   Pencil,
   Plus,
@@ -28,7 +30,11 @@ import {
   paymentLabel,
   PROOF_ACCEPT,
   PROOF_TYPES,
+  JERSEY_IMAGE_TYPES,
+  MAX_JERSEY_IMAGE_BYTES,
   formatCurrency,
+  sizeForChest,
+  type SizeChartRow,
 } from "@/lib/jersey";
 
 export const Route = createFileRoute("/admin")({
@@ -108,28 +114,22 @@ function AdminPage() {
 
   return (
     <Shell>
-      <section className="band bg-ink text-white">
-        <div className="inner flex flex-wrap items-end justify-between gap-5 pt-6 pb-10">
+      <section className="band border-b border-line bg-[radial-gradient(circle_at_20%_0%,rgba(255,77,18,0.16),transparent_55%)]">
+        <div className="inner flex flex-wrap items-end justify-between gap-5 pt-10 pb-10">
           <div>
             <div className="label text-brand">Admin</div>
-            <h1 className="h-xl mt-2.5">
-              Orders &amp;
-              <br />
-              payments
+            <h1 className="h-lg mt-2.5">
+              Orders &amp; <span className="text-brand">payments</span>
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void loadAll()}
-              className="pill pill-sm bg-white/10"
-            >
+            <button type="button" onClick={() => void loadAll()} className="pill pill-sm pill-dark">
               <RefreshCw className="size-3.5" /> Refresh
             </button>
             <button
               type="button"
               onClick={() => exportCsv(orders)}
-              className="pill pill-sm bg-white/10"
+              className="pill pill-sm pill-dark"
             >
               <Download className="size-3.5" /> Export CSV
             </button>
@@ -156,7 +156,7 @@ function AdminPage() {
             <StatCard tone="light" label="Collected" value={formatCurrency(stats.collected)} />
           </div>
 
-          <div className="mb-4 inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-[#e3e3df] p-1">
+          <div className="mb-4 inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-line bg-panel p-1">
             {(
               [
                 ["orders", `Orders (${orders.length})`],
@@ -169,8 +169,8 @@ function AdminPage() {
                 type="button"
                 aria-pressed={tab === key}
                 onClick={() => setTab(key)}
-                className={`rounded-full px-4 py-2 font-head text-xs font-extrabold whitespace-nowrap uppercase [font-stretch:110%] ${
-                  tab === key ? "bg-ink text-white" : ""
+                className={`rounded-md px-4 py-2 font-condensed font-semibold tracking-[0.16em] text-xs whitespace-nowrap uppercase ${
+                  tab === key ? "bg-brand text-white" : "text-ink-2 hover:text-white"
                 }`}
               >
                 {label}
@@ -181,7 +181,7 @@ function AdminPage() {
           {message && (
             <p
               role="status"
-              className={`mb-4 flex items-start justify-between gap-3 rounded-[14px] px-4 py-3 text-sm font-medium ${
+              className={`mb-4 flex items-start justify-between gap-3 rounded-lg px-4 py-3 text-sm font-medium ${
                 message.bad ? "bg-bad-bg text-bad" : "bg-ok-bg text-ok"
               }`}
             >
@@ -284,9 +284,9 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
             Sign in with an MMS Jersey admin account.
           </p>
         </div>
-        <form onSubmit={login} className="card grid gap-4 text-ink">
-          {error && <p className="rounded-[14px] bg-bad-bg px-4 py-3 text-sm text-bad">{error}</p>}
-          {info && <p className="rounded-[14px] bg-ok-bg px-4 py-3 text-sm text-ok">{info}</p>}
+        <form onSubmit={login} className="card grid gap-4">
+          {error && <p className="rounded-lg bg-bad-bg px-4 py-3 text-sm text-bad">{error}</p>}
+          {info && <p className="rounded-lg bg-ok-bg px-4 py-3 text-sm text-ok">{info}</p>}
           <Field label="Admin email">
             <input
               type="email"
@@ -380,7 +380,7 @@ function OrdersTab({
         <select
           value={payment}
           onChange={(e) => setPayment(e.target.value)}
-          className="field-input bg-white"
+          className="field-input"
         >
           {PAYMENT_FILTERS.map(([value, label]) => (
             <option key={value} value={value}>
@@ -413,9 +413,9 @@ function OrdersTab({
                 <tr
                   key={o.id}
                   onClick={() => setSelectedId(o.id)}
-                  className="cursor-pointer border-b border-[#ececea] last:border-0 hover:bg-paper"
+                  className="cursor-pointer border-b border-line last:border-0 hover:bg-paper"
                 >
-                  <Td className="font-head font-extrabold [font-stretch:112%]">{o.order_id}</Td>
+                  <Td className="font-display">{o.order_id}</Td>
                   <Td>
                     <b>{o.player_name}</b>
                     <div className="text-xs text-ink-3">
@@ -429,8 +429,14 @@ function OrdersTab({
                   <Td>{o.payment_method ?? "—"}</Td>
                   <Td>
                     <Tag tone={pay.tone}>{pay.label}</Tag>
-                    {o.payment_proof && o.payment_method !== "Cash" && (
-                      <div className="mt-1 text-xs text-brand">Screenshot ✓</div>
+                    {o.payment_status === "submitted" ? (
+                      <div className="mt-1 font-condensed text-xs font-semibold tracking-[0.14em] text-brand uppercase">
+                        Check receipt →
+                      </div>
+                    ) : (
+                      o.payment_status === "verified" && (
+                        <div className="mt-1 text-xs text-ok">Order confirmed</div>
+                      )
                     )}
                   </Td>
                   <Td>{ORDER_STATUS_LABELS[o.order_status] ?? o.order_status}</Td>
@@ -482,6 +488,22 @@ function OrderDrawer({
   const rejected = order.payment_status === "rejected";
   const pay = paymentLabel(order.payment_status);
 
+  // Open the receipt straight away so the admin can check it and approve in one go.
+  useEffect(() => {
+    setProofUrl(null);
+    if (!order.payment_proof) return;
+    let live = true;
+    void supabase.storage
+      .from("jersey-proofs")
+      .createSignedUrl(order.payment_proof, 600)
+      .then(({ data }) => {
+        if (live && data) setProofUrl(data.signedUrl);
+      });
+    return () => {
+      live = false;
+    };
+  }, [order.payment_proof]);
+
   async function run(
     action: () => PromiseLike<{ data: JerseyOrder | null; error: { message: string } | null }>,
     text: string,
@@ -531,25 +553,23 @@ function OrderDrawer({
       className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4 sm:p-8"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="mx-auto max-w-3xl overflow-hidden rounded-[22px] bg-white">
-        <div className="flex items-center justify-between gap-3 bg-ink px-6 py-5 text-white">
+      <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-line bg-panel">
+        <div className="flex items-center justify-between gap-3 border-b border-line bg-ink px-6 py-5">
           <div>
             <div className="label text-brand">Order</div>
-            <div className="font-head text-3xl font-black [font-stretch:125%]">
-              {order.order_id}
-            </div>
+            <div className="font-display text-3xl">{order.order_id}</div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="arrow-btn bg-white/10"
+            className="arrow-btn bg-paper text-white hover:text-brand"
           >
             <X className="size-5" />
           </button>
         </div>
 
-        <section className="border-b border-[#ececea] p-6">
+        <section className="border-b border-line p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="h-md">Payment</h3>
             <Tag tone={pay.tone}>{pay.label}</Tag>
@@ -589,7 +609,7 @@ function OrderDrawer({
           <div className="mt-5">
             {order.payment_proof ? (
               proofUrl ? (
-                <div className="rounded-[14px] bg-paper p-3">
+                <div className="rounded-lg bg-paper p-3">
                   {order.payment_proof.toLowerCase().endsWith(".pdf") ? (
                     <iframe
                       src={proofUrl}
@@ -600,7 +620,7 @@ function OrderDrawer({
                     <img
                       src={proofUrl}
                       alt={`Payment screenshot for ${order.order_id}`}
-                      className="mx-auto max-h-[480px] rounded object-contain"
+                      className="mx-auto max-h-[340px] rounded object-contain"
                     />
                   )}
                   <a
@@ -622,7 +642,7 @@ function OrderDrawer({
                 </button>
               )
             ) : (
-              <p className="rounded-[14px] bg-warn-bg px-4 py-3 text-xs text-warn">
+              <p className="rounded-lg bg-warn-bg px-4 py-3 text-xs text-warn">
                 No screenshot yet. If the parent sent it another way (for example WhatsApp), upload
                 it here before verifying.
               </p>
@@ -674,17 +694,17 @@ function OrderDrawer({
                       `${order.order_id} marked paid & verified. Order confirmed.`,
                     )
                   }
-                  className="pill pill-sm bg-ok hover:bg-[#0e6f3b]"
+                  className="pill bg-ok text-ink"
                 >
-                  <CheckCircle2 className="size-3.5" /> Mark paid &amp; verified
+                  <CheckCircle2 className="size-4" /> Approve · paid &amp; order confirmed
                 </button>
                 <button
                   type="button"
                   disabled={saving}
                   onClick={() => setPanel(panel === "reject" ? "none" : "reject")}
-                  className="pill pill-sm bg-bad-bg text-bad hover:bg-bad hover:text-white"
+                  className="pill bg-bad-bg text-bad hover:bg-bad hover:text-white"
                 >
-                  <XCircle className="size-3.5" /> Reject
+                  <XCircle className="size-4" /> Reject
                 </button>
               </>
             )}
@@ -701,13 +721,13 @@ function OrderDrawer({
           </div>
 
           {panel === "reject" && (
-            <div className="mt-4 grid gap-3 rounded-[14px] bg-bad-bg p-4">
+            <div className="mt-4 grid gap-3 rounded-lg bg-bad-bg p-4">
               <Field label="Reason (the parent sees this)">
                 <input
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder="e.g. Amount not received / wrong screenshot"
-                  className="field-input bg-white"
+                  className="field-input"
                 />
               </Field>
               <button
@@ -723,7 +743,7 @@ function OrderDrawer({
                     `Payment rejected for ${order.order_id}.`,
                   )
                 }
-                className="pill pill-sm justify-self-start bg-bad hover:bg-[#a32210]"
+                className="pill pill-sm justify-self-start bg-bad text-ink"
               >
                 Confirm reject
               </button>
@@ -823,7 +843,7 @@ function OrderDrawer({
               Save notes
             </button>
             {confirmDelete ? (
-              <div className="grid gap-2 rounded-[14px] bg-bad-bg p-3 text-sm text-bad">
+              <div className="grid gap-2 rounded-lg bg-bad-bg p-3 text-sm text-bad">
                 Delete {order.order_id}? This cannot be undone. To keep a record, set the status to
                 Cancelled instead.
                 <div className="flex gap-2">
@@ -886,7 +906,7 @@ function CashForm({
   children?: ReactNode;
 }) {
   return (
-    <div className="mt-4 grid gap-3 rounded-[14px] bg-paper p-4 sm:grid-cols-[160px_1fr]">
+    <div className="mt-4 grid gap-3 rounded-lg bg-paper p-4 sm:grid-cols-[160px_1fr]">
       <Field label="Amount received (₹)">
         <input
           type="number"
@@ -894,7 +914,7 @@ function CashForm({
           inputMode="numeric"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="field-input bg-white"
+          className="field-input"
         />
       </Field>
       <Field label="Receipt no. / note (optional)">
@@ -902,7 +922,7 @@ function CashForm({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="e.g. Receipt 042, paid at the office"
-          className="field-input bg-white"
+          className="field-input"
         />
       </Field>
       {children}
@@ -926,6 +946,7 @@ type PlayerDraft = {
   class_name: string;
   jersey_number: string;
   print_name: string;
+  chest_in: string;
   jersey_size: string;
   is_active: boolean;
 };
@@ -934,6 +955,7 @@ const emptyDraft: PlayerDraft = {
   class_name: "",
   jersey_number: "",
   print_name: "",
+  chest_in: "",
   jersey_size: "",
   is_active: true,
 };
@@ -971,6 +993,9 @@ function PlayersTab({
     if (!draft.full_name.trim()) return notify("Enter the player's name.", true);
     const number = draft.jersey_number.trim();
     if (number && !/^\d{1,2}$/.test(number)) return notify("Jersey number must be 0 to 99.", true);
+    const chest = draft.chest_in.trim();
+    if (chest && !(Number(chest) >= 5 && Number(chest) <= 40))
+      return notify("Chest size must be in inches, for example 14.5.", true);
     setBusy(true);
     const { error } = await supabase.rpc("jersey_admin_save_player", {
       p_id: draft.id,
@@ -980,6 +1005,7 @@ function PlayersTab({
       p_print_name: draft.print_name,
       p_jersey_size: draft.jersey_size,
       p_is_active: draft.is_active,
+      p_chest_in: chest ? Number(chest) : undefined,
     });
     setBusy(false);
     if (error) return notify(error.message, true);
@@ -992,7 +1018,7 @@ function PlayersTab({
     const rows = parsePlayerLines(paste);
     if (rows.errors.length) return notify(rows.errors.join(" "), true);
     if (rows.players.length === 0)
-      return notify("Paste at least one line: name, class, number, size.", true);
+      return notify("Paste at least one line: name, class, number, chest, size.", true);
     setBusy(true);
     const { data, error } = await supabase.rpc("jersey_admin_import_players", {
       p_rows: rows.players,
@@ -1030,7 +1056,7 @@ function PlayersTab({
       <TableWrap>
         <thead>
           <tr>
-            {["No.", "Player", "Class", "Size", "Order", ""].map((h) => (
+            {["No.", "Player", "Class", "Chest", "Size", "Order", ""].map((h) => (
               <Th key={h}>{h}</Th>
             ))}
           </tr>
@@ -1038,7 +1064,7 @@ function PlayersTab({
         <tbody>
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={6} className="p-10 text-center text-ink-2">
+              <td colSpan={7} className="p-10 text-center text-ink-2">
                 {players.length === 0
                   ? "No players yet. Add them one by one, or paste the full list below."
                   : "No players match."}
@@ -1050,10 +1076,10 @@ function PlayersTab({
               return (
                 <tr
                   key={p.id}
-                  className={`border-b border-[#ececea] last:border-0 ${p.is_active ? "" : "opacity-50"}`}
+                  className={`border-b border-line last:border-0 ${p.is_active ? "" : "opacity-50"}`}
                 >
                   <Td>
-                    <span className="grid size-[34px] place-items-center rounded-full bg-ink font-head text-[13px] font-black text-brand [font-stretch:125%]">
+                    <span className="grid size-[34px] place-items-center rounded-md bg-paper font-condensed font-semibold tracking-[0.16em] text-[13px] text-brand">
                       {p.jersey_number ?? "–"}
                     </span>
                   </Td>
@@ -1065,7 +1091,10 @@ function PlayersTab({
                     </div>
                   </Td>
                   <Td>{p.class_name ?? "—"}</Td>
-                  <Td>{p.jersey_size ?? "—"}</Td>
+                  <Td>{p.chest_in != null ? `${Number(p.chest_in)}"` : "—"}</Td>
+                  <Td>
+                    <span className="font-display text-lg text-brand">{p.jersey_size ?? "—"}</span>
+                  </Td>
                   <Td>
                     {tag ? (
                       <Tag tone={tag.tone}>{tag.label}</Tag>
@@ -1085,6 +1114,7 @@ function PlayersTab({
                             class_name: p.class_name ?? "",
                             jersey_number: p.jersey_number != null ? String(p.jersey_number) : "",
                             print_name: p.print_name ?? "",
+                            chest_in: p.chest_in != null ? String(Number(p.chest_in)) : "",
                             jersey_size: p.jersey_size ?? "",
                             is_active: p.is_active,
                           })
@@ -1114,16 +1144,39 @@ function PlayersTab({
       <div className="card mt-4 grid gap-3">
         <h3 className="h-md">Add many players at once</h3>
         <p className="m-0 text-sm text-ink-2">
-          Paste one player per line: <b>name, class, number, size</b>, and optionally a fifth value
-          for the name to print. You can copy these columns straight from Excel.
+          Use the Excel template: <b>Name, Class, Jersey No., Chest (inches), Size, Print name</b>.
+          Fill in the chest or the size. If the size is empty, it is worked out from the chest using
+          the size chart. Upload the file saved as CSV, or copy the rows from Excel and paste them
+          here.
         </p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={downloadTemplate} className="pill pill-dark pill-sm">
+            <Download className="size-3.5" /> Download template
+          </button>
+          <label className="pill pill-dark pill-sm cursor-pointer">
+            <FileSpreadsheet className="size-3.5" /> Upload CSV file
+            <input
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) setPaste(await f.text());
+              }}
+            />
+          </label>
+        </div>
         <textarea
           value={paste}
           onChange={(e) => setPaste(e.target.value)}
           rows={6}
-          placeholder={"Aarav Krishnan, Grade 5 A, 7, 28\nDiya Raman, Grade 5 A, 11, 26, DIYA R"}
+          placeholder={
+            "Aarav Krishnan, Grade 5 A, 7, 14, , \nDiya Raman, Grade 5 A, 11, , 26, DIYA R"
+          }
           className="field-input font-mono text-[13px]"
         />
+        {paste.trim() && <ImportPreview text={paste} chart={settings.size_chart} />}
         <button
           type="button"
           disabled={busy || !paste.trim()}
@@ -1160,7 +1213,25 @@ function PlayersTab({
                 className="field-input"
               />
             </Field>
-            <Field label="Size">
+            <Field label="Chest (inches, armpit to armpit)">
+              <input
+                value={draft.chest_in}
+                inputMode="decimal"
+                placeholder="e.g. 14.5"
+                onChange={(e) => {
+                  const chest_in = e.target.value;
+                  const fromChart = sizeForChest(settings.size_chart, Number(chest_in));
+                  setDraft({ ...draft, chest_in, jersey_size: fromChart ?? draft.jersey_size });
+                }}
+                className="field-input"
+              />
+              {draft.chest_in && sizeForChest(settings.size_chart, Number(draft.chest_in)) && (
+                <span className="text-xs text-brand">
+                  Size chart → size {sizeForChest(settings.size_chart, Number(draft.chest_in))}
+                </span>
+              )}
+            </Field>
+            <Field label="Jersey size">
               <select
                 value={draft.jersey_size}
                 onChange={(e) => setDraft({ ...draft, jersey_size: e.target.value })}
@@ -1287,11 +1358,7 @@ function CashModal({
         }}
       >
         <Field label="Size">
-          <select
-            value={size}
-            onChange={(e) => setSize(e.target.value)}
-            className="field-input bg-white"
-          >
+          <select value={size} onChange={(e) => setSize(e.target.value)} className="field-input">
             <option value="">Not set</option>
             {[...new Set([...(size ? [size] : []), ...settings.sizes])].map((s) => (
               <option key={s} value={s}>
@@ -1305,12 +1372,28 @@ function CashModal({
   );
 }
 
-/** Parses "name, class, number, size[, print name]" lines. Tabs (from Excel) work too. */
+const TEMPLATE_HEADER = "Name,Class,Jersey No.,Chest (inches),Size,Print name";
+
+function downloadTemplate() {
+  const csv = `${TEMPLATE_HEADER}\nAarav Krishnan,Grade 5 A,7,14,,\nDiya Raman,Grade 5 A,11,,26,DIYA R\n`;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "mms-jersey-players-template.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Parses "name, class, number, chest, size[, print name]" lines (the template's columns).
+ * Tabs (copied from Excel) work too, and a header row is skipped.
+ */
 function parsePlayerLines(text: string) {
   const players: {
     full_name: string;
     class_name: string;
     jersey_number: string;
+    chest_in: string;
     jersey_size: string;
     print_name: string;
   }[] = [];
@@ -1320,24 +1403,81 @@ function parsePlayerLines(text: string) {
     .map((l) => l.trim())
     .filter(Boolean)
     .forEach((line, i) => {
-      const [name = "", cls = "", num = "", size = "", print = ""] = line
+      const [name = "", cls = "", num = "", chest = "", size = "", print = ""] = line
         .split(/\t|,/)
-        .map((v) => v.trim());
+        .map((v) => v.trim().replace(/^"|"$/g, ""));
       if (!name) return;
       if (/^name$/i.test(name)) return; // header row
       if (num && !/^\d{1,2}$/.test(num)) {
         errors.push(`Line ${i + 1}: "${num}" is not a jersey number from 0 to 99.`);
         return;
       }
+      const chestValue = chest.replace(/["in ]/gi, "");
+      if (chestValue && !(Number(chestValue) >= 5 && Number(chestValue) <= 40)) {
+        errors.push(`Line ${i + 1}: "${chest}" is not a chest size in inches.`);
+        return;
+      }
       players.push({
         full_name: name,
         class_name: cls,
         jersey_number: num,
+        chest_in: chestValue,
         jersey_size: size,
         print_name: print,
       });
     });
   return { players, errors };
+}
+
+/** Shows the first rows as they will be saved, with the size worked out from the chest. */
+function ImportPreview({ text, chart }: { text: string; chart: SizeChartRow[] }) {
+  const { players, errors } = parsePlayerLines(text);
+  return (
+    <div className="grid gap-2">
+      {errors.map((e) => (
+        <p key={e} className="m-0 text-sm text-bad">
+          {e}
+        </p>
+      ))}
+      {players.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-line">
+          <table className="w-full min-w-[520px] text-left text-sm">
+            <thead>
+              <tr>
+                {["Name", "Class", "No.", "Chest", "Size"].map((h) => (
+                  <Th key={h}>{h}</Th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {players.slice(0, 8).map((p, i) => {
+                const fromChart = !p.jersey_size && sizeForChest(chart, Number(p.chest_in));
+                return (
+                  <tr key={i} className="border-b border-line last:border-0">
+                    <Td>{p.full_name}</Td>
+                    <Td>{p.class_name || "—"}</Td>
+                    <Td>{p.jersey_number || "—"}</Td>
+                    <Td>{p.chest_in ? `${p.chest_in}"` : "—"}</Td>
+                    <Td>
+                      <span className="font-display text-brand">
+                        {p.jersey_size || fromChart || "—"}
+                      </span>
+                      {fromChart && <span className="ml-2 text-xs text-ink-3">from chart</span>}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {players.length > 8 && (
+            <p className="m-0 border-t border-line px-4 py-2 text-xs text-ink-3">
+              …and {players.length - 8} more
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* --------------------------------- Settings -------------------------------- */
@@ -1351,28 +1491,52 @@ function SettingsTab({
   onSaved: (s: JerseySettings) => void;
   notify: (text: string, bad?: boolean) => void;
 }) {
-  const [form, setForm] = useState({ ...settings, sizesText: settings.sizes.join(", ") });
+  const [form, setForm] = useState({ ...settings });
+  const [chart, setChart] = useState(
+    settings.size_chart.map((r) => ({ size: r.size, chest: String(r.chest) })),
+  );
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm({ ...form, [key]: e.target.value });
 
-  async function save() {
+  async function save(extra: Partial<JerseySettings> = {}) {
     const price = Number(form.unit_price);
     if (!(price > 0)) return notify("Enter a valid price.", true);
-    const sizes = form.sizesText
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (sizes.length === 0) return notify("Enter at least one size.", true);
+    const rows = chart
+      .map((r) => ({ size: r.size.trim(), chest: Number(r.chest) }))
+      .filter((r) => r.size);
+    if (rows.length === 0) return notify("Add at least one size.", true);
+    if (rows.some((r) => !(r.chest > 0)))
+      return notify("Every size needs a chest width in inches.", true);
+    if (new Set(rows.map((r) => r.size)).size !== rows.length)
+      return notify("Each size can only be listed once.", true);
+    rows.sort((a, b) => a.chest - b.chest);
     setSaving(true);
-    const { sizesText: _ignored, ...rest } = form;
     const { data, error } = await supabase.rpc("jersey_admin_save_settings", {
-      p: { ...rest, unit_price: price, sizes },
+      p: { ...form, ...extra, unit_price: price, size_chart: rows, sizes: rows.map((r) => r.size) },
     });
     setSaving(false);
     if (error || !data) return notify(error?.message ?? "Could not save settings.", true);
     onSaved(data);
+    setForm({ ...data });
     notify("Settings saved. Parents see the changes straight away.");
+  }
+
+  async function uploadImage(file: File) {
+    if (!JERSEY_IMAGE_TYPES.includes(file.type))
+      return notify("The jersey photo must be a JPG, PNG or WEBP image.", true);
+    if (file.size > MAX_JERSEY_IMAGE_BYTES)
+      return notify("The jersey photo must be 5 MB or smaller.", true);
+    setUploading(true);
+    const path = `jersey/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-60)}`;
+    const { error } = await supabase.storage
+      .from("jersey-images")
+      .upload(path, file, { upsert: false, contentType: file.type });
+    setUploading(false);
+    if (error) return notify(error.message, true);
+    const url = supabase.storage.from("jersey-images").getPublicUrl(path).data.publicUrl;
+    await save({ jersey_image_url: url });
   }
 
   const text = (key: keyof typeof form, label: string, placeholder?: string) => (
@@ -1388,25 +1552,137 @@ function SettingsTab({
 
   return (
     <div className="grid gap-4">
-      <div className="card">
-        <h3 className="h-md">Jersey &amp; orders</h3>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {text("season_label", "Season label", "Season 2026")}
-          {text("unit_price", "Price per jersey (₹)")}
-          {text("sizesText", "Sizes offered (comma separated)", "22, 24, 26, S, M, L")}
-          {text("contact_note", "Message when orders are closed")}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="card">
+          <h3 className="h-md">Jersey photo</h3>
+          <p className="mt-2 text-sm text-ink-2">
+            Shown to parents on the home page and while they order.
+          </p>
+          <div className="mt-4 grid aspect-[5/4] place-items-center overflow-hidden rounded-lg border border-line bg-[radial-gradient(circle_at_50%_40%,rgba(255,77,18,0.28),#0a0a0a_70%)]">
+            {form.jersey_image_url ? (
+              <img
+                src={form.jersey_image_url}
+                alt="Current jersey photo"
+                className="size-full object-cover"
+              />
+            ) : (
+              <span className="text-sm text-ink-3">No photo yet. A drawn jersey is shown.</span>
+            )}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <label
+              className={`pill pill-sm cursor-pointer ${uploading || saving ? "pointer-events-none opacity-60" : ""}`}
+            >
+              <ImagePlus className="size-3.5" />
+              {uploading ? "Uploading…" : form.jersey_image_url ? "Change photo" : "Upload photo"}
+              <input
+                type="file"
+                accept={JERSEY_IMAGE_TYPES.join(",")}
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void uploadImage(f);
+                }}
+              />
+            </label>
+            {form.jersey_image_url && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void save({ jersey_image_url: "" })}
+                className="pill pill-ghost pill-sm"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
         </div>
-        <Toggle
-          checked={form.parents_can_change_size}
-          onChange={(v) => setForm({ ...form, parents_can_change_size: v })}
-          label="Parents can change the size"
-        />
-        <Toggle
-          checked={form.orders_open}
-          onChange={(v) => setForm({ ...form, orders_open: v })}
-          label="Orders are open"
-        />
+
+        <div className="card">
+          <h3 className="h-md">Price &amp; orders</h3>
+          <div className="mt-5 grid gap-3">
+            <Field label="Jersey price (₹)">
+              <input
+                value={String(form.unit_price ?? "")}
+                onChange={set("unit_price")}
+                inputMode="numeric"
+                className="field-input font-display text-2xl text-brand"
+              />
+            </Field>
+            {text("season_label", "Season label", "Season 2026")}
+            {text("contact_note", "Message when orders are closed")}
+          </div>
+          <Toggle
+            checked={form.orders_open}
+            onChange={(v) => setForm({ ...form, orders_open: v })}
+            label="Orders are open"
+          />
+          <Toggle
+            checked={form.parents_can_change_size}
+            onChange={(v) => setForm({ ...form, parents_can_change_size: v })}
+            label="Parents can change the size"
+          />
+        </div>
       </div>
+
+      <div className="card">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="h-md">Sizes &amp; size chart</h3>
+            <p className="mt-2 max-w-[60ch] text-sm text-ink-2">
+              The sizes parents can pick, with the jersey chest width (armpit to armpit, in inches).
+              When you enter a child&apos;s chest, the app picks the smallest size that fits. A
+              child between sizes gets the larger one.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setChart([...chart, { size: "", chest: "" }])}
+            className="pill pill-dark pill-sm"
+          >
+            <Plus className="size-3.5" /> Add size
+          </button>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {chart.map((row, i) => (
+            <div key={i} className="grid gap-2 rounded-lg border border-line bg-ink p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-condensed text-xs tracking-[0.2em] text-ink-2 uppercase">
+                  Size
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove size ${row.size}`}
+                  onClick={() => setChart(chart.filter((_, j) => j !== i))}
+                  className="text-ink-3 hover:text-bad"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+              <input
+                value={row.size}
+                onChange={(e) =>
+                  setChart(chart.map((r, j) => (j === i ? { ...r, size: e.target.value } : r)))
+                }
+                className="field-input bg-panel py-2 font-display text-xl text-brand"
+              />
+              <span className="font-condensed text-xs tracking-[0.2em] text-ink-2 uppercase">
+                Chest (in)
+              </span>
+              <input
+                value={row.chest}
+                inputMode="decimal"
+                onChange={(e) =>
+                  setChart(chart.map((r, j) => (j === i ? { ...r, chest: e.target.value } : r)))
+                }
+                className="field-input bg-panel py-2"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="card">
         <h3 className="h-md">Payment details</h3>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -1435,11 +1711,11 @@ function SettingsTab({
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-paper">
-      <header className="band bg-ink text-white">
-        <div className="inner flex items-center justify-between gap-4 py-[18px]">
+    <div className="min-h-screen bg-ink">
+      <header className="band border-b border-white/8 bg-ink/80">
+        <div className="inner flex min-h-16 items-center justify-between gap-4 py-3">
           <Logo />
-          <Link to="/" className="label text-white/70 hover:text-white">
+          <Link to="/" className="label text-ink-2 hover:text-brand">
             ← Parent site
           </Link>
         </div>
@@ -1460,16 +1736,18 @@ function StatCard({
 }) {
   const toneClass =
     tone === "orange"
-      ? "bg-brand text-white"
+      ? "border border-brand bg-brand text-white"
       : tone === "black"
-        ? "bg-ink text-white"
-        : "bg-white shadow-[inset_0_0_0_1px_var(--rule)]";
+        ? "border border-brand/40 bg-brand-soft text-white"
+        : "border border-line bg-panel";
   return (
     <div
-      className={`flex min-h-[120px] flex-col justify-between gap-3 rounded-[18px] p-5 ${toneClass}`}
+      className={`flex min-h-[120px] flex-col justify-between gap-3 rounded-xl p-5 ${toneClass}`}
     >
-      <span className={`label ${tone === "light" ? "text-ink-2" : ""}`}>{label}</span>
-      <b className="font-head text-[clamp(28px,4vw,46px)] leading-[0.9] font-black tracking-[-0.03em] [font-stretch:125%]">
+      <span className={`label ${tone === "orange" ? "" : "text-ink-2"}`}>{label}</span>
+      <b
+        className={`font-display text-[clamp(30px,4vw,48px)] leading-[0.9] font-normal ${tone === "black" ? "text-brand" : ""}`}
+      >
         {value}
       </b>
     </div>
@@ -1493,7 +1771,7 @@ function SearchBox({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-full border-[1.5px] border-rule bg-white py-3 pr-4 pl-11 text-sm focus:border-ink focus:outline-none"
+        className="w-full rounded-lg border border-line bg-panel py-3 pr-4 pl-11 text-sm placeholder:text-white/30 focus:border-brand focus:outline-none"
       />
     </label>
   );
@@ -1501,7 +1779,7 @@ function SearchBox({
 
 function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-[18px] bg-white shadow-[inset_0_0_0_1px_var(--rule)]">
+    <div className="overflow-x-auto rounded-xl border border-line bg-panel">
       <table className="w-full min-w-[820px] text-left text-sm">{children}</table>
     </div>
   );
@@ -1509,7 +1787,7 @@ function TableWrap({ children }: { children: ReactNode }) {
 
 function Th({ children }: { children: ReactNode }) {
   return (
-    <th className="bg-ink px-4 py-3.5 font-head text-[11px] font-bold tracking-[0.06em] text-white uppercase [font-stretch:110%]">
+    <th className="border-b border-line bg-ink px-4 py-3.5 font-condensed text-xs font-semibold tracking-[0.2em] text-ink-2 uppercase">
       {children}
     </th>
   );
@@ -1573,10 +1851,15 @@ function Modal({
       className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4 sm:p-8"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="mx-auto max-w-2xl rounded-[22px] bg-white p-6">
+      <div className="mx-auto max-w-2xl rounded-xl border border-line bg-panel p-6">
         <div className="mb-5 flex items-center justify-between gap-3">
           <h3 className="h-md">{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="arrow-btn bg-ink">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="arrow-btn bg-paper text-white hover:text-brand"
+          >
             <X className="size-5" />
           </button>
         </div>

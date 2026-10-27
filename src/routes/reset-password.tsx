@@ -81,7 +81,7 @@ function ResetPasswordPage() {
           <h1 className="h-lg mt-2">Reset password</h1>
         </div>
 
-        <div className="card text-ink">
+        <div className="card">
           {!ready && <p className="text-center text-sm text-ink-2">Checking your link…</p>}
 
           {ready && done && (
@@ -95,9 +95,7 @@ function ResetPasswordPage() {
 
           {ready && !done && validLink && (
             <form onSubmit={submit} className="grid gap-3">
-              {error && (
-                <p className="rounded-[14px] bg-bad-bg px-4 py-3 text-sm text-bad">{error}</p>
-              )}
+              {error && <p className="rounded-lg bg-bad-bg px-4 py-3 text-sm text-bad">{error}</p>}
               <label className="grid gap-2">
                 <span className="label text-ink-2">New password</span>
                 <input

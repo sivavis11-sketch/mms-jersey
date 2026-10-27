@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-import { OFFICIAL_JERSEY_IMAGE, type Tone } from "@/lib/jersey";
+import type { Tone } from "@/lib/jersey";
 
 export function ArrowIcon({ className = "size-[18px]" }: { className?: string }) {
   return (
@@ -37,28 +37,17 @@ export function Spark({ className }: { className?: string }) {
   );
 }
 
-/** Orange pill with the round arrow button beside it. */
+/** The main orange button, with a trailing arrow like the Steel City portal. */
 export function PillButton({
   children,
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) {
   return (
-    <span className="pill-row inline-flex items-center gap-1.5">
-      <button {...props} className={`pill ${className}`}>
-        {children}
-      </button>
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-hidden="true"
-        onClick={props.onClick}
-        disabled={props.disabled}
-        className="arrow-btn"
-      >
-        <ArrowIcon />
-      </button>
-    </span>
+    <button {...props} className={`pill ${className}`}>
+      {children}
+      <span aria-hidden="true">→</span>
+    </button>
   );
 }
 
@@ -67,27 +56,23 @@ export function Tag({ tone = "dark", children }: { tone?: Tone; children: ReactN
 }
 
 /**
- * The jersey artwork. Shows the official photo once OFFICIAL_JERSEY_IMAGE is set,
- * otherwise a drawn jersey with the child's name and number.
+ * The jersey artwork. Shows the jersey photo the admin uploaded in Settings, otherwise
+ * a drawn jersey with the child's name and number.
  */
 export function JerseyArt({
   name = "MMS",
   number = "10",
   className,
-  forcePlaceholder = false,
+  image,
 }: {
   name?: string;
   number?: string;
   className?: string;
-  forcePlaceholder?: boolean;
+  image?: string | null | undefined;
 }) {
-  if (OFFICIAL_JERSEY_IMAGE && !forcePlaceholder) {
+  if (image) {
     return (
-      <img
-        src={OFFICIAL_JERSEY_IMAGE}
-        alt="Official MMS Season 2026 jersey"
-        className={`object-contain ${className ?? ""}`}
-      />
+      <img src={image} alt="Official MMS jersey" className={`object-contain ${className ?? ""}`} />
     );
   }
   const nameSize = name.length > 8 ? 20 : name.length > 5 ? 24 : 30;
@@ -101,6 +86,8 @@ export function JerseyArt({
       <path
         d="M88 18 C100 32 160 32 172 18 L222 40 L252 98 L214 116 L204 96 L204 266 L56 266 L56 96 L46 116 L8 98 L38 40 Z"
         fill="#ff4d12"
+        stroke="rgba(255,255,255,0.18)"
+        strokeWidth="2"
       />
       <path
         d="M38 40 L88 18 C100 32 160 32 172 18 L222 40 L252 98 L214 116 L204 96 L204 130 L56 130 L56 96 L46 116 L8 98 Z"
@@ -113,8 +100,8 @@ export function JerseyArt({
         x="130"
         y="112"
         textAnchor="middle"
-        fontFamily="Archivo, Arial Black, sans-serif"
-        fontWeight="900"
+        fontFamily="Anton, Arial Narrow, sans-serif"
+        fontWeight="400"
         fontSize={nameSize}
         fill="#fff"
       >
@@ -124,8 +111,8 @@ export function JerseyArt({
         x="130"
         y="222"
         textAnchor="middle"
-        fontFamily="Archivo, Arial Black, sans-serif"
-        fontWeight="900"
+        fontFamily="Anton, Arial Narrow, sans-serif"
+        fontWeight="400"
         fontSize="84"
         fill="#0b0b0b"
       >
@@ -137,37 +124,36 @@ export function JerseyArt({
 
 export function Logo() {
   return (
-    <Link
-      to="/"
-      className="flex items-center gap-2 font-head text-lg font-black [font-stretch:125%]"
-    >
-      <span className="grid size-[30px] place-items-center rounded-[9px] bg-brand text-[13px] text-white">
+    <Link to="/" className="flex items-center gap-3">
+      <span className="grid size-9 place-items-center rounded-md bg-brand font-display text-lg text-white">
         M
       </span>
-      mms jersey
+      <span className="leading-none">
+        <span className="block font-display text-lg tracking-wide">MMS JERSEY</span>
+        <span className="mt-1 block font-condensed text-[11px] tracking-[0.35em] text-ink-2 uppercase">
+          Season Order Portal
+        </span>
+      </span>
     </Link>
   );
 }
 
+const headerLink =
+  "inline-flex rounded-md border border-white/15 px-4 py-2.5 font-condensed text-xs tracking-[0.18em] text-ink-2 uppercase transition-colors hover:border-brand hover:text-brand";
+
 export function SiteHeader({ right }: { right?: ReactNode }) {
   return (
-    <header className="band bg-ink text-white">
-      <div className="inner flex flex-wrap items-center justify-between gap-4 py-[18px]">
+    <header className="band border-b border-white/8 bg-ink/80">
+      <div className="inner flex min-h-16 flex-wrap items-center justify-between gap-3 py-3">
         <Logo />
         <nav className="flex items-center gap-2">
           {right ?? (
             <>
-              <Link
-                to="/status"
-                className="rounded-full px-4 py-2 font-head text-xs font-bold uppercase text-white/70 [font-stretch:110%] hover:text-white"
-              >
+              <Link to="/status" className={headerLink}>
                 My orders
               </Link>
-              <Link
-                to="/admin"
-                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-4 py-2 font-head text-xs font-bold uppercase [font-stretch:110%] hover:bg-white hover:text-ink"
-              >
-                Admin <ArrowIcon className="size-3.5" />
+              <Link to="/admin" className={`${headerLink} max-sm:hidden`}>
+                Admin
               </Link>
             </>
           )}
@@ -179,25 +165,25 @@ export function SiteHeader({ right }: { right?: ReactNode }) {
 
 export function SiteFooter({ cta }: { cta?: ReactNode }) {
   return (
-    <footer className="band overflow-hidden bg-brand pt-10 pb-7 text-white">
-      <div className="inner">
-        <p
-          aria-hidden="true"
-          className="m-0 whitespace-nowrap font-head font-black leading-[0.8] tracking-[-0.04em] text-[#ff6a35] [font-stretch:125%] [font-size:clamp(80px,22vw,300px)] [text-shadow:0_8px_0_var(--orange-deep),0_16px_30px_rgba(0,0,0,0.25)]"
-        >
-          mms
-        </p>
-        <div className="mt-8 flex flex-wrap items-end justify-between gap-5">
+    <footer className="band border-t border-line bg-ink">
+      {cta && (
+        <div className="inner flex flex-wrap items-center justify-between gap-5 border-b border-line py-10">
           <h2 className="h-md">
-            Ready for
-            <br />
-            match day?
+            Ready for <span className="text-brand">match day?</span>
           </h2>
           {cta}
         </div>
-        <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-white/25 pt-5 text-xs text-white/80">
-          <span>© {new Date().getFullYear()} MMS Jersey · Season order portal</span>
-          <Link to="/admin" className="hover:text-white">
+      )}
+      <div className="inner flex flex-col items-center justify-between gap-3 py-8 sm:flex-row">
+        <div className="font-display tracking-wide text-white/80">MMS JERSEY</div>
+        <div className="flex items-center gap-5">
+          <div className="font-condensed text-xs tracking-[0.25em] text-ink-2 uppercase">
+            © {new Date().getFullYear()} MMS Jersey · Season Order Portal
+          </div>
+          <Link
+            to="/admin"
+            className="font-condensed text-xs tracking-[0.2em] text-ink-2 uppercase hover:text-brand"
+          >
             Admin
           </Link>
         </div>

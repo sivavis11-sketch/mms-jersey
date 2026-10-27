@@ -35,7 +35,7 @@ function StatusPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-ink">
       <SiteHeader />
       <section className="band bg-ink text-white">
         <div className="inner pt-8 pb-12">
@@ -83,7 +83,7 @@ function OrderCard({ row }: { row: Row }) {
   if (!o)
     return (
       <div className="card">
-        <div className="font-head text-2xl font-black [font-stretch:125%]">{row.orderId}</div>
+        <div className="font-display text-2xl">{row.orderId}</div>
         <p className="mt-2 text-sm text-ink-2">
           {row.playerName} · We couldn't load this order ({row.error ?? "not found"}).
         </p>
@@ -95,7 +95,7 @@ function OrderCard({ row }: { row: Row }) {
     <div className="card grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="rounded-[10px] bg-ink px-3 py-1.5 font-head text-lg font-black text-white [font-stretch:125%]">
+          <span className="rounded-md border border-brand/40 bg-brand-soft px-3 py-1.5 text-brand font-display text-lg text-white">
             {o.order_id}
           </span>
           <Tag tone={pay.tone}>{pay.label}</Tag>
@@ -113,7 +113,7 @@ function OrderCard({ row }: { row: Row }) {
             .join(" · ")}
         </p>
         {o.payment_status === "rejected" && (
-          <p className="mt-3 rounded-[14px] bg-bad-bg px-4 py-3 text-sm text-bad">
+          <p className="mt-3 rounded-lg bg-bad-bg px-4 py-3 text-sm text-bad">
             The school could not accept this payment
             {o.payment_rejection_reason ? `: ${o.payment_rejection_reason}` : ""}. Please pick your
             child's name again on the order page and upload a new screenshot.
@@ -126,7 +126,7 @@ function OrderCard({ row }: { row: Row }) {
         </Link>
       ) : (
         <div
-          className={`grid size-14 place-items-center rounded-full ${verified ? "bg-ok text-white" : "bg-warn-bg text-warn"}`}
+          className={`grid size-14 place-items-center rounded-full ${verified ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}
           aria-hidden="true"
         >
           {verified ? (

@@ -1,15 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  ArrowIcon,
-  JerseyArt,
-  PillButton,
-  SiteFooter,
-  SiteHeader,
-  Spark,
-} from "@/components/brand";
+import { JerseyArt, SiteFooter, SiteHeader } from "@/components/brand";
 import { OrderFlow } from "@/components/order-flow";
+import heroPlayer from "@/assets/hero-player.jpg";
 import { supabase } from "@/integrations/supabase/client";
 import type { JerseySettings, PublicPlayer } from "@/integrations/supabase/types";
 import { formatCurrency } from "@/lib/jersey";
@@ -56,99 +50,161 @@ function Landing() {
 
   const price = settings ? formatCurrency(Number(settings.unit_price)) : "—";
   const season = settings?.season_label ?? "Season 2026";
+  const sizes = settings?.sizes ?? [];
 
   return (
-    <div className="min-h-screen bg-paper">
-      <SiteHeader />
+    <div className="min-h-screen bg-ink font-body text-white">
+      <SiteHeader
+        right={
+          <>
+            <Link
+              to="/status"
+              className="inline-flex rounded-md border border-white/15 px-4 py-2.5 font-condensed text-xs tracking-[0.18em] text-ink-2 uppercase transition-colors hover:border-brand hover:text-brand"
+            >
+              My orders
+            </Link>
+            <button
+              type="button"
+              onClick={scrollToOrder}
+              className="inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 font-condensed text-sm tracking-[0.2em] text-white uppercase transition-colors hover:bg-white hover:text-ink"
+            >
+              Start order
+            </button>
+          </>
+        }
+      />
 
       {/* Hero */}
-      <section className="band bg-ink text-white">
-        <div className="inner grid items-center gap-7 pt-8 pb-14 md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-          <div>
-            <div className="label mb-4 text-brand">Official kit · {season}</div>
-            <h1 className="h-xl">
-              Wear the
-              <br />
-              MMS colours
-            </h1>
-            <p className="mt-[18px] mb-6 max-w-[40ch] text-base text-white/70">
-              The official MMS jersey. Find your child's name, pay by UPI and upload the screenshot.
-              It takes about two minutes.
-            </p>
-            <PillButton type="button" onClick={scrollToOrder}>
-              Order now
-            </PillButton>
-            <div className="mt-9 grid max-w-[460px]">
-              {["Find your child", "Check name, number & size", "Pay & upload screenshot"].map(
-                (t) => (
-                  <div
-                    key={t}
-                    className="flex items-center justify-between gap-3 border-b border-white/18 py-3 font-head text-[13px] font-bold uppercase [font-stretch:110%]"
-                  >
-                    {t} <ArrowIcon />
-                  </div>
-                ),
-              )}
-            </div>
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0">
+          <img
+            src={heroPlayer}
+            alt=""
+            width={1920}
+            height={1088}
+            className="kenburns h-[74vh] min-h-[520px] w-full object-cover opacity-40 brightness-50 contrast-125 grayscale"
+          />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/80 to-ink/60" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(255,77,18,0.22),transparent_60%)]" />
+        <div className="relative mx-auto flex h-[74vh] min-h-[520px] max-w-4xl flex-col items-center justify-center px-5 text-center">
+          <div className="mb-5 flex items-center gap-3">
+            <span className="h-px w-10 bg-brand" />
+            <span className="font-condensed text-xs tracking-[0.4em] text-brand uppercase">
+              Now open · {season}
+            </span>
+            <span className="h-px w-10 bg-brand" />
           </div>
-          <div className="relative grid min-h-[340px] place-items-center">
-            <Spark className="absolute top-[2%] right-[12%] w-[46px] text-brand" />
-            <Spark className="absolute top-[14%] right-[4%] w-6 text-brand" />
-            <JerseyArt
-              name="MMS"
-              number="10"
-              className="w-[min(340px,82%)] -rotate-[9deg] drop-shadow-[0_30px_40px_rgba(0,0,0,0.6)]"
-            />
+          <h1 className="h-xl">
+            MMS <span className="text-brand">Jersey</span>
+          </h1>
+          <p className="mt-4 font-condensed text-sm tracking-[0.45em] text-white/70 uppercase sm:text-lg">
+            Season Order Portal
+          </p>
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
+            <button type="button" onClick={scrollToOrder} className="pill px-8 py-4 text-base">
+              Order your kit
+            </button>
+            <a href="#kit" className="pill pill-ghost px-8 py-4 text-base text-white">
+              View kit
+            </a>
           </div>
         </div>
       </section>
 
-      {/* About + stats */}
-      <section className="band">
-        <div className="inner">
-          <div className="grid items-end gap-6 pt-14 pb-7 md:grid-cols-2">
-            <div>
-              <div className="label text-ink-2">The {season} kit</div>
-              <h2 className="h-lg mt-2.5">
-                Getting to
-                <br />
-                know your kit
-              </h2>
+      {/* How it works + kit */}
+      <section id="kit" className="band border-t border-line">
+        <div className="inner grid gap-10 py-14 sm:py-20 lg:grid-cols-[1fr_420px]">
+          <div>
+            <div className="label mb-3 text-brand">How it works</div>
+            <h2 className="h-lg">Four steps to your kit</h2>
+            <ol className="mt-8 grid gap-4 sm:grid-cols-2">
+              {[
+                [
+                  "01",
+                  "Find your child",
+                  "Search the name. The school has already added every player.",
+                ],
+                ["02", "Check details", "Confirm the name, number and size printed on the jersey."],
+                ["03", "Make payment", "Pay by UPI, scan the QR, or use a bank transfer."],
+                ["04", "Upload & order", "Add the payment screenshot and get your order ID."],
+              ].map(([num, title, copy]) => (
+                <li key={num} className="rounded-xl border border-line bg-panel p-5">
+                  <div className="font-display text-2xl text-brand">{num}</div>
+                  <div className="mt-2 font-condensed text-base tracking-[0.15em] uppercase">
+                    {title}
+                  </div>
+                  <p className="mt-1 text-sm text-ink-2">{copy}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-10 flex flex-wrap gap-x-10 gap-y-4">
+              {[
+                { value: price, label: "Per jersey" },
+                { value: sizes.length ? String(sizes.length) : "—", label: "Size range" },
+                { value: "2 min", label: "To order" },
+              ].map((stat) => (
+                <div key={stat.label} className="flex items-baseline gap-3">
+                  <span className="font-display text-3xl text-brand">{stat.value}</span>
+                  <span className="font-condensed text-xs tracking-[0.25em] text-ink-2 uppercase">
+                    {stat.label}
+                  </span>
+                </div>
+              ))}
             </div>
-            <p className="m-0 max-w-[44ch] text-ink-2">
-              The school has already added every player with their name, number and size. You only
-              check the details and pay.
-            </p>
           </div>
-          <div className="grid gap-3 pb-14 md:grid-cols-[1.5fr_1fr_1fr]">
-            <Stat
-              tone="orange"
-              value={price}
-              text="One price per jersey. The name and number are printed at no extra cost."
-            />
-            <Stat tone="black" value="4" unit="steps" text="Find, check, pay, upload." />
-            <Stat tone="light" value="2" unit="min" text="Average time to place an order." />
-          </div>
+          <aside className="self-start rounded-xl border border-line bg-panel p-6 sm:p-7">
+            <div className="mb-6 grid aspect-[530/455] place-items-center overflow-hidden rounded-lg bg-[radial-gradient(circle_at_50%_40%,rgba(255,77,18,0.28),#0a0a0a_70%)]">
+              <JerseyArt
+                name="MMS"
+                number="10"
+                image={settings?.jersey_image_url}
+                className={
+                  settings?.jersey_image_url
+                    ? "size-full object-cover"
+                    : "w-[62%] drop-shadow-[0_24px_30px_rgba(0,0,0,0.7)]"
+                }
+              />
+            </div>
+            <div className="font-condensed text-xs tracking-[0.3em] text-ink-2 uppercase">
+              Available sizes
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-4">
+              {sizes.map((s) => (
+                <span
+                  key={s}
+                  className="rounded-lg border border-line py-2.5 text-center font-condensed tracking-wide text-white/70"
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+            <div className="mt-5 flex items-baseline justify-between gap-4 border-t border-line pt-5">
+              <span className="font-condensed text-xs tracking-[0.25em] text-ink-2 uppercase">
+                Price
+              </span>
+              <span className="font-display text-2xl text-brand">{price}</span>
+            </div>
+            <button
+              type="button"
+              onClick={scrollToOrder}
+              className="pill mt-5 w-full py-4 text-base"
+            >
+              Order your kit
+            </button>
+          </aside>
         </div>
       </section>
 
       {/* Order */}
-      <section id="order" className="band scroll-mt-4 pb-16">
-        <div className="inner">
-          <div className="mb-6 grid items-end gap-6 md:grid-cols-2">
-            <div>
-              <div className="label text-ink-2">Order</div>
-              <h2 className="h-lg mt-2.5">
-                Order in
-                <br />
-                four steps
-              </h2>
-            </div>
-            <p className="m-0 max-w-[44ch] text-ink-2">
-              Pay with any UPI app, scan the QR, or use a bank transfer. The school checks every
-              screenshot before confirming.
-            </p>
-          </div>
+      <section id="order" className="band scroll-mt-2 border-t border-line pb-20">
+        <div className="inner pt-14">
+          <p className="label text-brand">Jersey order</p>
+          <h2 className="h-lg mt-2">Place your order</h2>
+          <p className="mt-3 mb-8 max-w-2xl text-sm text-ink-2">
+            Pick your child's name, check the details, pay and upload the screenshot. The school
+            checks every payment before confirming.
+          </p>
           {loadError ? (
             <p className="card text-bad">
               We couldn't load the order form: {loadError}. Please refresh the page.
@@ -173,102 +229,13 @@ function Landing() {
         </div>
       </section>
 
-      {/* Kit band */}
-      <section className="band bg-ink py-16 text-white">
-        <div className="inner">
-          <div className="grid items-end gap-6 md:grid-cols-2">
-            <div>
-              <div className="label text-white/65">Official kit</div>
-              <h2 className="h-lg mt-2.5">
-                {season}
-                <br />
-                match jersey
-              </h2>
-            </div>
-            <p className="m-0 max-w-[44ch] text-white/70">
-              Breathable match fabric, with your child's name and number printed on the back.
-            </p>
-          </div>
-          <div className="mt-8 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-            <div className="relative grid min-h-[340px] place-items-center overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_50%_45%,#2a2a2a,#111_70%)]">
-              <Spark className="absolute top-[8%] left-[8%] w-[34px] text-brand" />
-              <JerseyArt name="MMS" number="10" className="w-[min(280px,70%)] -rotate-6" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <KitTile title="UPI" text="GPay, PhonePe, Paytm or any UPI app" />
-              <KitTile title={"Scan\nQR"} text="Amount filled in for you" />
-              <KitTile title="Bank" text="Direct transfer to the school account" />
-              <KitTile
-                title="Verified"
-                text="The school checks every payment before confirming"
-                dark
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
       <SiteFooter
         cta={
-          <button type="button" onClick={scrollToOrder} className="pill pill-white">
-            Order now
+          <button type="button" onClick={scrollToOrder} className="pill">
+            Order your kit →
           </button>
         }
       />
-    </div>
-  );
-}
-
-function Stat({
-  tone,
-  value,
-  unit,
-  text,
-}: {
-  tone: "orange" | "black" | "light";
-  value: string;
-  unit?: string;
-  text: string;
-}) {
-  const toneClass =
-    tone === "orange"
-      ? "bg-brand text-white"
-      : tone === "black"
-        ? "bg-ink text-white"
-        : "bg-white shadow-[inset_0_0_0_1px_var(--rule)]";
-  return (
-    <div
-      className={`flex min-h-[170px] flex-col justify-between gap-3.5 rounded-[18px] p-5 ${toneClass}`}
-    >
-      <span
-        className={`grid size-[30px] place-items-center rounded-full ${tone === "light" ? "bg-brand-soft text-brand" : "bg-white/20"}`}
-      >
-        <ArrowIcon className="size-4" />
-      </span>
-      <b className="font-head text-[clamp(44px,6vw,72px)] leading-[0.9] font-black tracking-[-0.03em] [font-stretch:125%]">
-        {value}
-        {unit && <sup className="relative top-[0.1em] ml-0.5 align-top text-[0.42em]">{unit}</sup>}
-      </b>
-      <p className={`m-0 max-w-[32ch] text-[12.5px] ${tone === "light" ? "text-ink-2" : ""}`}>
-        {text}
-      </p>
-    </div>
-  );
-}
-
-function KitTile({ title, text, dark }: { title: string; text: string; dark?: boolean }) {
-  return (
-    <div
-      className={`flex min-h-[160px] flex-col justify-between rounded-[18px] p-[18px] ${
-        dark ? "bg-[#161616] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]" : "bg-brand"
-      }`}
-    >
-      <b
-        className={`font-head text-[clamp(26px,3.4vw,40px)] leading-[0.95] font-black whitespace-pre-line uppercase [font-stretch:125%] ${dark ? "text-brand" : ""}`}
-      >
-        {title}
-      </b>
-      <p className="m-0 text-[13px] text-white/90">{text}</p>
     </div>
   );
 }

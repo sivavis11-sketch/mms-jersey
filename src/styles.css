@@ -6,20 +6,25 @@
 
 /*
  * MMS Jersey design system.
- * Bands alternate black / light paper / orange. Headings are Archivo at its widest
- * (125%) and heaviest, uppercase. Buttons are orange pills with a round arrow button.
+ * Same premium dark layout as the Steel City portal (Anton display type, Barlow
+ * Condensed labels, ink panels with hairline borders), in the MMS orange / black /
+ * white colours.
  */
 
 @theme inline {
-  --font-head: "Archivo", "Arial Black", "Helvetica Neue", sans-serif;
-  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --font-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-head: "Anton", "Arial Narrow", sans-serif;
+  --font-display: "Anton", "Arial Narrow", sans-serif;
+  --font-condensed: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Barlow", "Helvetica Neue", Arial, sans-serif;
 
   --color-brand: var(--orange);
   --color-brand-deep: var(--orange-deep);
   --color-brand-soft: var(--orange-soft);
   --color-ink: var(--black);
+  --color-panel: var(--panel);
   --color-paper: var(--paper);
+  --color-line: var(--rule);
   --color-rule: var(--rule);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
@@ -30,49 +35,51 @@
   --color-bad: var(--bad);
   --color-bad-bg: var(--bad-bg);
 
-  --color-background: var(--paper);
-  --color-foreground: var(--black);
-  --color-card: #ffffff;
-  --color-card-foreground: var(--black);
-  --color-popover: #ffffff;
-  --color-popover-foreground: var(--black);
+  --color-background: var(--black);
+  --color-foreground: #ffffff;
+  --color-card: var(--panel);
+  --color-card-foreground: #ffffff;
+  --color-popover: var(--panel);
+  --color-popover-foreground: #ffffff;
   --color-primary: var(--orange);
   --color-primary-foreground: #ffffff;
-  --color-secondary: #e6e6e2;
-  --color-secondary-foreground: var(--black);
-  --color-muted: #e6e6e2;
+  --color-secondary: var(--paper);
+  --color-secondary-foreground: #ffffff;
+  --color-muted: var(--paper);
   --color-muted-foreground: var(--ink-2);
-  --color-accent: #e6e6e2;
-  --color-accent-foreground: var(--black);
+  --color-accent: var(--paper);
+  --color-accent-foreground: #ffffff;
   --color-destructive: var(--bad);
   --color-destructive-foreground: #ffffff;
   --color-border: var(--rule);
   --color-input: var(--rule);
   --color-ring: var(--orange);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --radius-2xl: 22px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
 }
 
 :root {
   --orange: #ff4d12;
   --orange-deep: #e63f08;
-  --orange-soft: #ffe3d6;
-  --black: #0b0b0b;
-  --paper: #f1f1ef;
-  --rule: #dcdcd8;
-  --ink-2: #57574f;
-  --ink-3: #8b8b84;
-  --ok: #128a4a;
-  --ok-bg: #ddf3e6;
-  --warn: #b36a00;
-  --warn-bg: #fff0d1;
-  --bad: #c62a12;
-  --bad-bg: #ffe0d9;
-  color-scheme: light;
+  --orange-soft: rgba(255, 77, 18, 0.1);
+  /* Page background, panels, inset boxes and hairlines, darkest to lightest. */
+  --black: #0a0a0a;
+  --panel: #141414;
+  --paper: #1c1c1c;
+  --rule: #2b2b2b;
+  --ink-2: #a8a8a8;
+  --ink-3: #7c7c7c;
+  --ok: #4ade80;
+  --ok-bg: rgba(74, 222, 128, 0.12);
+  --warn: #fbbf24;
+  --warn-bg: rgba(251, 191, 36, 0.12);
+  --bad: #f87171;
+  --bad-bg: rgba(248, 113, 113, 0.12);
+  color-scheme: dark;
 }
 
 @layer base {
@@ -80,9 +87,10 @@
     border-color: var(--color-border);
   }
   body {
-    background-color: var(--paper);
-    color: var(--black);
+    background-color: var(--black);
+    color: #fff;
     font-family: var(--font-body);
+    font-synthesis: none;
     -webkit-font-smoothing: antialiased;
   }
   ::selection {
@@ -90,101 +98,110 @@
     color: #fff;
   }
   :focus-visible {
-    outline: 3px solid var(--orange);
+    outline: 2px solid var(--orange);
     outline-offset: 2px;
   }
 }
 
 @layer components {
   .band {
-    padding-left: max(16px, env(safe-area-inset-left, 0px));
-    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
   }
   .inner {
-    max-width: 1200px;
+    max-width: 1280px;
     margin-inline: auto;
   }
 
   .h-xl,
   .h-lg,
   .h-md {
-    font-family: var(--font-head);
-    font-stretch: 125%;
-    font-weight: 900;
+    font-family: var(--font-display);
+    font-weight: 400;
     text-transform: uppercase;
-    line-height: 0.92;
-    letter-spacing: -0.01em;
+    line-height: 0.9;
+    letter-spacing: 0.01em;
     text-wrap: balance;
   }
   .h-xl {
-    font-size: clamp(40px, 8vw, 96px);
+    font-size: clamp(2.8rem, 9vw, 7rem);
+    line-height: 0.86;
   }
   .h-lg {
-    font-size: clamp(28px, 4.4vw, 50px);
+    font-size: clamp(2.2rem, 4.6vw, 3.6rem);
   }
   .h-md {
-    font-size: clamp(22px, 2.6vw, 30px);
+    font-size: clamp(1.6rem, 2.8vw, 2.2rem);
     line-height: 1;
   }
   .label {
-    font-family: var(--font-head);
-    font-stretch: 110%;
-    font-weight: 700;
-    font-size: 11px;
-    letter-spacing: 0.08em;
+    font-family: var(--font-condensed);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.28em;
     text-transform: uppercase;
   }
 
+  /* Buttons: square-cornered, condensed, wide tracking, like the Steel City portal. */
   .pill {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border-radius: 999px;
-    padding: 13px 22px;
+    border-radius: 8px;
+    padding: 14px 26px;
     background: var(--orange);
     color: #fff;
-    font-family: var(--font-head);
-    font-stretch: 112%;
-    font-weight: 800;
-    font-size: 13px;
-    letter-spacing: 0.04em;
+    font-family: var(--font-condensed);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    transition: background-color 0.2s, color 0.2s;
+    transition:
+      background-color 0.2s,
+      color 0.2s,
+      border-color 0.2s;
   }
   .pill:hover:not(:disabled) {
-    background: var(--orange-deep);
+    background: #fff;
+    color: var(--black);
   }
   .pill:disabled {
-    opacity: 0.35;
+    opacity: 0.4;
     cursor: not-allowed;
   }
   .pill-ghost {
     background: transparent;
-    color: var(--black);
-    box-shadow: inset 0 0 0 1.5px var(--black);
+    color: var(--ink-2);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
   }
   .pill-ghost:hover:not(:disabled) {
-    background: var(--black);
-    color: #fff;
+    background: transparent;
+    color: var(--orange);
+    box-shadow: inset 0 0 0 1px var(--orange);
   }
   .pill-white {
     background: #fff;
-    color: var(--orange);
+    color: var(--black);
   }
   .pill-white:hover:not(:disabled) {
-    background: var(--black);
+    background: var(--orange);
     color: #fff;
   }
   .pill-dark {
-    background: var(--black);
+    background: var(--paper);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px var(--rule);
   }
   .pill-dark:hover:not(:disabled) {
-    background: #2a2a2a;
+    background: var(--paper);
+    color: var(--orange);
+    box-shadow: inset 0 0 0 1px var(--orange);
   }
   .pill-sm {
-    padding: 8px 14px;
-    font-size: 11px;
+    padding: 9px 14px;
+    font-size: 12.5px;
+    letter-spacing: 0.16em;
   }
   .arrow-btn {
     display: grid;
@@ -192,59 +209,54 @@
     width: 44px;
     height: 44px;
     flex: none;
-    border-radius: 50%;
-    background: var(--orange);
-    color: #fff;
-    transition: transform 0.25s, background-color 0.2s;
-  }
-  .arrow-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-  .pill-row:hover .arrow-btn:not(:disabled) {
-    transform: rotate(-45deg);
+    border-radius: 8px;
+    background: var(--orange-soft);
+    color: var(--orange);
   }
 
   .card {
-    background: #fff;
-    border-radius: 22px;
-    padding: clamp(18px, 3vw, 30px);
-    box-shadow: 0 1px 0 var(--rule), 0 24px 60px -30px rgba(0, 0, 0, 0.25);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: clamp(20px, 3vw, 32px);
     min-width: 0;
   }
   .field-input {
     width: 100%;
-    border: 1.5px solid var(--rule);
-    border-radius: 12px;
-    padding: 12px 14px;
-    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 13px 16px;
+    background: var(--black);
+    color: #fff;
+  }
+  .field-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
   }
   .field-input:focus {
-    border-color: var(--black);
+    border-color: var(--orange);
     outline: none;
-    background: #fff;
   }
 
   .tag {
     display: inline-flex;
     align-items: center;
-    font-family: var(--font-head);
-    font-stretch: 110%;
-    font-size: 10.5px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
+    font-family: var(--font-condensed);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    padding: 5px 10px;
+    padding: 4px 10px;
     border-radius: 6px;
     white-space: nowrap;
   }
   .tag-dark {
-    background: var(--black);
-    color: #fff;
+    background: transparent;
+    color: var(--ink-2);
+    box-shadow: inset 0 0 0 1px var(--rule);
   }
   .tag-plain {
-    background: #e6e6e2;
-    color: var(--black);
+    background: var(--paper);
+    color: var(--ink-2);
   }
   .tag-ok {
     background: var(--ok-bg);
@@ -264,6 +276,18 @@
   }
 }
 
+@keyframes ken {
+  0% {
+    transform: scale(1) translate(0, 0);
+  }
+  100% {
+    transform: scale(1.12) translate(-1.5%, -1%);
+  }
+}
+@utility kenburns {
+  animation: ken 22s ease-in-out infinite alternate;
+}
+
 @keyframes fade-up {
   from {
     opacity: 0.4;
@@ -279,10 +303,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-up {
+  .animate-fade-up,
+  .kenburns {
     animation: none;
-  }
-  .arrow-btn {
-    transition: none;
   }
 }

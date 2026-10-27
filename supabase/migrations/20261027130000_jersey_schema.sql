@@ -16,7 +16,15 @@ CREATE TABLE IF NOT EXISTS jersey.settings (
   id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   season_label TEXT NOT NULL DEFAULT 'Season 2026',
   unit_price NUMERIC(10,2) NOT NULL DEFAULT 700 CHECK (unit_price > 0),
-  sizes TEXT[] NOT NULL DEFAULT ARRAY['22','24','26','28','30','32','34','S','M','L','XL'],
+  sizes TEXT[] NOT NULL DEFAULT ARRAY['26','28','30','32','34','36','38','40','42'],
+  -- Jersey chest width in inches (armpit to armpit) for each size, from the size chart.
+  -- Used to turn a child's chest measurement into a jersey size.
+  size_chart JSONB NOT NULL DEFAULT '[
+    {"size":"26","chest":12.5},{"size":"28","chest":13.5},{"size":"30","chest":14.5},
+    {"size":"32","chest":15.5},{"size":"34","chest":16.5},{"size":"36","chest":18},
+    {"size":"38","chest":19},{"size":"40","chest":20},{"size":"42","chest":21}
+  ]'::jsonb,
+  jersey_image_url TEXT NOT NULL DEFAULT '',
   parents_can_change_size BOOLEAN NOT NULL DEFAULT true,
   orders_open BOOLEAN NOT NULL DEFAULT true,
   upi_id TEXT NOT NULL DEFAULT '',
@@ -44,6 +52,7 @@ CREATE TABLE IF NOT EXISTS jersey.players (
   jersey_number INT CHECK (jersey_number IS NULL OR jersey_number BETWEEN 0 AND 99),
   print_name TEXT CHECK (print_name IS NULL OR length(print_name) <= 20),
   jersey_size TEXT,
+  chest_in NUMERIC(4,1) CHECK (chest_in IS NULL OR chest_in BETWEEN 5 AND 40),
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -116,6 +125,21 @@ CREATE OR REPLACE FUNCTION jersey.order_json(o jersey.orders)
 RETURNS JSONB LANGUAGE sql STABLE SET search_path = ''
 AS $$
   SELECT to_jsonb(o) - 'access_token';
+$$;
+
+-- Smallest size whose chest width is at least the child's, so a child between sizes
+-- gets the larger one. Above the biggest size, the biggest size.
+CREATE OR REPLACE FUNCTION jersey.size_for_chest(p_chest NUMERIC)
+RETURNS TEXT LANGUAGE sql STABLE SET search_path = ''
+AS $$
+  SELECT coalesce(
+    (SELECT r->>'size' FROM jersey.settings s, jsonb_array_elements(s.size_chart) r
+     WHERE s.id = 1 AND (r->>'chest')::NUMERIC >= p_chest
+     ORDER BY (r->>'chest')::NUMERIC LIMIT 1),
+    (SELECT r->>'size' FROM jersey.settings s, jsonb_array_elements(s.size_chart) r
+     WHERE s.id = 1 ORDER BY (r->>'chest')::NUMERIC DESC LIMIT 1)
+  )
+  WHERE p_chest IS NOT NULL AND p_chest > 0;
 $$;
 
 -- 3. Parent (public) functions ------------------------------------------------
@@ -261,14 +285,14 @@ $$;
 CREATE OR REPLACE FUNCTION public.jersey_admin_list_players()
 RETURNS TABLE (
   id UUID, full_name TEXT, class_name TEXT, jersey_number INT, print_name TEXT,
-  jersey_size TEXT, is_active BOOLEAN, order_id TEXT, order_state TEXT, payment_method TEXT
+  jersey_size TEXT, chest_in NUMERIC, is_active BOOLEAN, order_id TEXT, order_state TEXT, payment_method TEXT
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
   PERFORM jersey.require_admin();
   RETURN QUERY
-    SELECT p.id, p.full_name, p.class_name, p.jersey_number, p.print_name, p.jersey_size, p.is_active,
+    SELECT p.id, p.full_name, p.class_name, p.jersey_number, p.print_name, p.jersey_size, p.chest_in, p.is_active,
            o.order_id, coalesce(o.payment_status, 'none'), o.payment_method
     FROM jersey.players p
     LEFT JOIN jersey.orders o ON o.player_id = p.id AND o.order_status <> 'cancelled'
@@ -278,17 +302,20 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.jersey_admin_save_player(
   p_id UUID, p_full_name TEXT, p_class_name TEXT, p_jersey_number INT,
-  p_print_name TEXT, p_jersey_size TEXT, p_is_active BOOLEAN DEFAULT true
+  p_print_name TEXT, p_jersey_size TEXT, p_is_active BOOLEAN DEFAULT true, p_chest_in NUMERIC DEFAULT NULL
 )
 RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE new_id UUID;
+DECLARE
+  new_id UUID;
+  -- An empty size with a chest measurement gets its size from the size chart.
+  final_size TEXT := coalesce(nullif(trim(p_jersey_size), ''), jersey.size_for_chest(p_chest_in));
 BEGIN
   PERFORM jersey.require_admin();
   IF p_id IS NULL THEN
-    INSERT INTO jersey.players (full_name, class_name, jersey_number, print_name, jersey_size, is_active)
+    INSERT INTO jersey.players (full_name, class_name, jersey_number, print_name, jersey_size, chest_in, is_active)
     VALUES (trim(p_full_name), nullif(trim(p_class_name), ''), p_jersey_number,
-            nullif(upper(trim(p_print_name)), ''), nullif(trim(p_jersey_size), ''), coalesce(p_is_active, true))
+            nullif(upper(trim(p_print_name)), ''), final_size, p_chest_in, coalesce(p_is_active, true))
     RETURNING id INTO new_id;
   ELSE
     UPDATE jersey.players SET
@@ -296,7 +323,8 @@ BEGIN
       class_name = nullif(trim(p_class_name), ''),
       jersey_number = p_jersey_number,
       print_name = nullif(upper(trim(p_print_name)), ''),
-      jersey_size = nullif(trim(p_jersey_size), ''),
+      jersey_size = final_size,
+      chest_in = p_chest_in,
       is_active = coalesce(p_is_active, true),
       updated_at = now()
     WHERE id = p_id
@@ -307,21 +335,28 @@ BEGIN
 END;
 $$;
 
--- p_rows: [{"full_name": "...", "class_name": "...", "jersey_number": 7, "print_name": "...", "jersey_size": "28"}, ...]
+-- p_rows: [{"full_name": "...", "class_name": "...", "jersey_number": 7, "chest_in": 14,
+--           "jersey_size": "", "print_name": "..."}, ...]
+-- A row with a chest measurement and no size gets its size from the size chart.
 CREATE OR REPLACE FUNCTION public.jersey_admin_import_players(p_rows JSONB)
 RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE added INT;
 BEGIN
   PERFORM jersey.require_admin();
-  INSERT INTO jersey.players (full_name, class_name, jersey_number, print_name, jersey_size)
-  SELECT trim(r->>'full_name'),
-         nullif(trim(r->>'class_name'), ''),
-         nullif(trim(r->>'jersey_number'), '')::INT,
-         nullif(upper(trim(r->>'print_name')), ''),
-         nullif(trim(r->>'jersey_size'), '')
-  FROM jsonb_array_elements(p_rows) r
-  WHERE nullif(trim(r->>'full_name'), '') IS NOT NULL;
+  INSERT INTO jersey.players (full_name, class_name, jersey_number, print_name, chest_in, jersey_size)
+  SELECT x.full_name, x.class_name, x.jersey_number, x.print_name, x.chest_in,
+         coalesce(x.jersey_size, jersey.size_for_chest(x.chest_in))
+  FROM (
+    SELECT trim(r->>'full_name') AS full_name,
+           nullif(trim(r->>'class_name'), '') AS class_name,
+           nullif(trim(r->>'jersey_number'), '')::INT AS jersey_number,
+           nullif(upper(trim(r->>'print_name')), '') AS print_name,
+           nullif(trim(r->>'chest_in'), '')::NUMERIC AS chest_in,
+           nullif(trim(r->>'jersey_size'), '') AS jersey_size
+    FROM jsonb_array_elements(p_rows) r
+    WHERE nullif(trim(r->>'full_name'), '') IS NOT NULL
+  ) x;
   GET DIAGNOSTICS added = ROW_COUNT;
   RETURN added;
 END;
@@ -531,6 +566,8 @@ BEGIN
     bank_ifsc = coalesce(upper(trim(p->>'bank_ifsc')), bank_ifsc),
     bank_branch = coalesce(trim(p->>'bank_branch'), bank_branch),
     contact_note = coalesce(trim(p->>'contact_note'), contact_note),
+    jersey_image_url = coalesce(trim(p->>'jersey_image_url'), jersey_image_url),
+    size_chart = CASE WHEN jsonb_typeof(p->'size_chart') = 'array' THEN p->'size_chart' ELSE size_chart END,
     updated_at = now()
   WHERE id = 1;
   RETURN public.jersey_get_settings();
@@ -577,5 +614,21 @@ DROP POLICY IF EXISTS "Jersey: admins can view payment screenshots" ON storage.o
 CREATE POLICY "Jersey: admins can view payment screenshots"
   ON storage.objects FOR SELECT TO authenticated
   USING (bucket_id = 'jersey-proofs' AND public.jersey_is_admin());
+
+-- 7. Jersey photo --------------------------------------------------------------
+-- Public bucket for the jersey photo shown to parents. Only jersey admins can upload.
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('jersey-images', 'jersey-images', true, 5242880,
+        ARRAY['image/jpeg','image/png','image/webp'])
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS "Jersey: admins can upload the jersey photo" ON storage.objects;
+CREATE POLICY "Jersey: admins can upload the jersey photo"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'jersey-images' AND public.jersey_is_admin());
 
 NOTIFY pgrst, 'reload schema';

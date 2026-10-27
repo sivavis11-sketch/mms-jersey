@@ -16,6 +16,9 @@ export type JerseySettings = {
   bank_ifsc: string;
   bank_branch: string;
   contact_note: string;
+  jersey_image_url: string;
+  /** Jersey chest width in inches (armpit to armpit) for each size. */
+  size_chart: { size: string; chest: number }[];
 };
 
 export type PaymentStatus = "pending" | "submitted" | "verified" | "rejected";
@@ -32,6 +35,7 @@ export type PublicPlayer = {
 };
 
 export type AdminPlayer = Omit<PublicPlayer, "order_state"> & {
+  chest_in: number | null;
   is_active: boolean;
   order_id: string | null;
   order_state: OrderState;
@@ -95,6 +99,7 @@ export type Database = {
           p_print_name?: string | undefined;
           p_jersey_size?: string | undefined;
           p_is_active?: boolean | undefined;
+          p_chest_in?: number | undefined;
         },
         string
       >;
