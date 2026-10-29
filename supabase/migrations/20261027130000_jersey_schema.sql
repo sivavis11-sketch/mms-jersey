@@ -644,4 +644,8 @@ CREATE POLICY "Jersey: admins can upload the jersey photo"
   ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'jersey-images' AND public.jersey_is_admin());
 
+-- 8. Admin login ---------------------------------------------------------------
+-- The login itself is created in Supabase → Authentication → Users.
+INSERT INTO jersey.admin_users (email) VALUES ('admin.jersey@mms.com') ON CONFLICT (email) DO NOTHING;
+
 NOTIFY pgrst, 'reload schema';
