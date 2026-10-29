@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 
 import type { JerseyOrder } from "@/integrations/supabase/types";
-import { formatCurrency } from "@/lib/jersey";
+import { formatCurrency, gradeLabel } from "@/lib/jersey";
 
 // The receipt is drawn with fixed colours so the PDF looks the same on every screen.
 const C = {
@@ -175,8 +175,9 @@ export function CashReceipt({ order, season }: { order: JerseyOrder; season: str
             gap: "14px 12px",
           }}
         >
-          {item("Player", order.player_name)}
-          {item("Class", order.class_name ?? "—")}
+          {item("Student", order.player_name, true)}
+          {item("Admission no.", order.admission_no ?? "—")}
+          {item("Grade", gradeLabel(order.class_name))}
           {item("Jersey", `No. ${order.jersey_number ?? "—"} · Size ${order.jersey_size}`)}
           {item("Date", receiptDate(order))}
           {order.received_from && item("Received from", order.received_from, true)}

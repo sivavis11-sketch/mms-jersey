@@ -24,17 +24,23 @@ export type JerseySettings = {
 export type PaymentStatus = "pending" | "submitted" | "verified" | "rejected";
 export type OrderState = PaymentStatus | "none";
 
-export type PublicPlayer = {
+/** A student as parents see it in the name search. */
+export type StudentMatch = {
   id: string;
   full_name: string;
   class_name: string | null;
-  jersey_number: number | null;
-  print_name: string | null;
-  jersey_size: string | null;
+  admission_no: string | null;
   order_state: OrderState;
 };
 
-export type AdminPlayer = Omit<PublicPlayer, "order_state"> & {
+export type AdminPlayer = {
+  id: string;
+  full_name: string;
+  class_name: string | null;
+  admission_no: string | null;
+  jersey_number: number | null;
+  print_name: string | null;
+  jersey_size: string | null;
   chest_in: number | null;
   is_active: boolean;
   order_id: string | null;
@@ -49,6 +55,7 @@ export type JerseyOrder = {
   player_id: string | null;
   player_name: string;
   class_name: string | null;
+  admission_no: string | null;
   jersey_number: number | null;
   print_name: string | null;
   jersey_size: string;
@@ -78,16 +85,25 @@ export type Database = {
     Functions: {
       jersey_is_admin: Fn<Record<string, never>, boolean>;
       jersey_get_settings: Fn<Record<string, never>, JerseySettings>;
-      jersey_list_players: Fn<Record<string, never>, PublicPlayer[]>;
+      jersey_search_players: Fn<{ p_query: string }, StudentMatch[]>;
       jersey_place_order: Fn<
         {
           p_player_id: string;
+          p_jersey_number: number;
+          p_print_name: string;
           p_jersey_size: string;
+        },
+        JerseyOrder & { access_token: string }
+      >;
+      jersey_submit_payment: Fn<
+        {
+          p_order_id: string;
+          p_access_token: string;
           p_payment_method: string;
           p_payment_proof: string;
           p_payment_reference?: string | undefined;
         },
-        JerseyOrder & { access_token: string }
+        JerseyOrder
       >;
       jersey_get_order: Fn<{ p_order_id: string; p_access_token: string }, JerseyOrder>;
       jersey_admin_list_orders: Fn<Record<string, never>, JerseyOrder[]>;
@@ -102,6 +118,7 @@ export type Database = {
           p_jersey_size?: string | undefined;
           p_is_active?: boolean | undefined;
           p_chest_in?: number | undefined;
+          p_admission_no?: string | undefined;
         },
         string
       >;

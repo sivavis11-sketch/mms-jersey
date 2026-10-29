@@ -1,11 +1,11 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { JerseyArt, SiteFooter, SiteHeader } from "@/components/brand";
 import { OrderFlow } from "@/components/order-flow";
 import heroPlayer from "@/assets/hero-player.jpg";
 import { supabase } from "@/integrations/supabase/client";
-import type { JerseySettings, PublicPlayer } from "@/integrations/supabase/types";
+import type { JerseySettings } from "@/integrations/supabase/types";
 import { formatCurrency } from "@/lib/jersey";
 
 export const Route = createFileRoute("/")({
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Order your child's official MMS jersey. Find the name, check the details, pay by UPI and upload the screenshot.",
+          "Order your child's official MMS jersey. Find your child, choose the number, name and size, place the order and pay by UPI.",
       },
       { property: "og:title", content: "MMS Jersey · Season 2026" },
       { property: "og:description", content: "Official MMS jersey ordering for parents." },
@@ -30,14 +30,7 @@ function scrollToOrder() {
 
 function Landing() {
   const [settings, setSettings] = useState<JerseySettings | null>(null);
-  const [players, setPlayers] = useState<PublicPlayer[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  const loadPlayers = useCallback(async () => {
-    const { data, error } = await supabase.rpc("jersey_list_players");
-    if (error) setLoadError(error.message);
-    else setPlayers(data ?? []);
-  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -45,8 +38,7 @@ function Landing() {
       if (error || !data) setLoadError(error?.message ?? "Could not load the order page.");
       else setSettings(data);
     })();
-    void loadPlayers();
-  }, [loadPlayers]);
+  }, []);
 
   const price = settings ? formatCurrency(Number(settings.unit_price)) : "—";
   const season = settings?.season_label ?? "Season 2026";
@@ -120,14 +112,14 @@ function Landing() {
             <h2 className="h-lg">Four steps to your kit</h2>
             <ol className="mt-8 grid gap-4 sm:grid-cols-2">
               {[
+                ["01", "Find your child", "Type the name or admission number."],
+                ["02", "Jersey details", "Choose the number, the name to print and the size."],
+                ["03", "Place order", "Check everything and get your order ID."],
                 [
-                  "01",
-                  "Find your child",
-                  "Search the name. The school has already added every player.",
+                  "04",
+                  "Pay",
+                  "Pay by UPI, QR or bank and upload the screenshot, or pay cash at school.",
                 ],
-                ["02", "Check details", "Confirm the name, number and size printed on the jersey."],
-                ["03", "Make payment", "Pay by UPI, scan the QR, or use a bank transfer."],
-                ["04", "Upload & order", "Add the payment screenshot and get your order ID."],
               ].map(([num, title, copy]) => (
                 <li key={num} className="rounded-xl border border-line bg-panel p-5">
                   <div className="font-display text-2xl text-brand">{num}</div>
@@ -202,8 +194,8 @@ function Landing() {
           <p className="label text-brand">Jersey order</p>
           <h2 className="h-lg mt-2">Place your order</h2>
           <p className="mt-3 mb-8 max-w-2xl text-sm text-ink-2">
-            Pick your child's name, check the details, pay and upload the screenshot. The school
-            checks every payment before confirming.
+            Find your child, choose the jersey details and place the order. Then pay by UPI and
+            upload the screenshot, or pay later. The school checks every payment before confirming.
           </p>
           {loadError ? (
             <p className="card text-bad">
@@ -220,11 +212,7 @@ function Landing() {
               </p>
             </div>
           ) : (
-            <OrderFlow
-              settings={settings}
-              players={players}
-              onOrderPlaced={() => void loadPlayers()}
-            />
+            <OrderFlow settings={settings} />
           )}
         </div>
       </section>

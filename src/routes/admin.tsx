@@ -36,8 +36,7 @@ import {
   JERSEY_IMAGE_TYPES,
   MAX_JERSEY_IMAGE_BYTES,
   formatCurrency,
-  sizeForChest,
-  type SizeChartRow,
+  gradeLabel,
 } from "@/lib/jersey";
 
 export const Route = createFileRoute("/admin")({
@@ -110,6 +109,8 @@ function AdminPage() {
   const verified = live.filter((o) => o.payment_status === "verified");
   const stats = {
     needsCheck: live.filter((o) => o.payment_status === "submitted").length,
+    notPaid: live.filter((o) => o.payment_status === "pending" || o.payment_status === "rejected")
+      .length,
     verified: verified.length,
     notOrdered: players.filter((p) => p.is_active && p.order_state === "none").length,
     collected: verified.reduce((sum, o) => sum + Number(o.payment_received_amount ?? o.amount), 0),
@@ -152,8 +153,9 @@ function AdminPage() {
 
       <section className="band pb-16">
         <div className="inner">
-          <div className="my-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard tone="orange" label="Needs check" value={String(stats.needsCheck)} />
+          <div className="my-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+            <StatCard tone="orange" label="Paid · not verified" value={String(stats.needsCheck)} />
+            <StatCard tone="light" label="Ordered · not paid" value={String(stats.notPaid)} />
             <StatCard tone="black" label="Paid & verified" value={String(stats.verified)} />
             <StatCard tone="light" label="Not ordered yet" value={String(stats.notOrdered)} />
             <StatCard tone="light" label="Collected" value={formatCurrency(stats.collected)} />
@@ -164,7 +166,7 @@ function AdminPage() {
               [
                 ["orders", `Orders (${orders.length})`],
                 ["receipts", `Cash receipts (${orders.filter(isCashReceipt).length})`],
-                ["players", `Players & sizes (${players.length})`],
+                ["players", `Students (${players.length})`],
                 ["settings", "Settings"],
               ] as const
             ).map(([key, label]) => (
@@ -335,13 +337,19 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
 /* ---------------------------------- Orders --------------------------------- */
 
 const PAYMENT_FILTERS = [
-  ["all", "All payments"],
-  ["submitted", "Needs check"],
-  ["verified", "Paid & verified"],
-  ["cash", "Paid in cash"],
-  ["rejected", "Rejected"],
+  ["all", "All"],
   ["pending", "Not paid"],
+  ["submitted", "Paid · not verified"],
+  ["verified", "Verified"],
+  ["cash", "Cash"],
+  ["rejected", "Rejected"],
 ] as const;
+
+function matchesPayment(o: JerseyOrder, filter: string) {
+  if (filter === "all") return true;
+  if (filter === "cash") return o.payment_method === "Cash" && o.payment_status === "verified";
+  return o.payment_status === filter;
+}
 
 function OrdersTab({
   orders,
@@ -366,43 +374,57 @@ function OrdersTab({
     return orders.filter(
       (o) =>
         (!q ||
-          [o.order_id, o.player_name, o.class_name, o.jersey_number, o.payment_reference].some(
-            (v) =>
-              String(v ?? "")
-                .toLowerCase()
-                .includes(q),
+          [
+            o.order_id,
+            o.player_name,
+            o.admission_no,
+            o.class_name,
+            o.jersey_number,
+            o.print_name,
+            o.payment_reference,
+          ].some((v) =>
+            String(v ?? "")
+              .toLowerCase()
+              .includes(q),
           )) &&
-        (payment === "all" ||
-          (payment === "cash"
-            ? o.payment_method === "Cash" && o.payment_status === "verified"
-            : o.payment_status === payment)),
+        matchesPayment(o, payment),
     );
   }, [orders, search, payment]);
 
   return (
     <>
-      <div className="mb-3 grid gap-2 md:grid-cols-[1fr_220px]">
+      <div className="mb-3">
         <SearchBox
           value={search}
           onChange={setSearch}
-          placeholder="Search order, player, class, UTR…"
+          placeholder="Search order, student, admission no., grade, UTR…"
         />
-        <select
-          value={payment}
-          onChange={(e) => setPayment(e.target.value)}
-          className="field-input"
-        >
-          {PAYMENT_FILTERS.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+      </div>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {PAYMENT_FILTERS.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={payment === value}
+            onClick={() => setPayment(value)}
+            className={`rounded-md border px-3 py-1.5 font-condensed text-[13px] font-semibold tracking-[0.1em] uppercase ${
+              payment === value ? "border-brand bg-brand-soft text-brand" : "border-line text-ink-2"
+            }`}
+          >
+            {label}{" "}
+            <span className="tabular-nums">
+              {
+                orders.filter((o) => o.order_status !== "cancelled" && matchesPayment(o, value))
+                  .length
+              }
+            </span>
+          </button>
+        ))}
       </div>
       <TableWrap>
         <thead>
           <tr>
-            {["Order", "Player", "Size", "Amount", "Method", "Payment", "Status", "Placed"].map(
+            {["Order", "Student", "Jersey", "Amount", "Method", "Payment", "Status", "Placed"].map(
               (h) => (
                 <Th key={h}>{h}</Th>
               ),
@@ -429,19 +451,27 @@ function OrdersTab({
                   <Td>
                     <b>{o.player_name}</b>
                     <div className="text-xs text-ink-3">
-                      {[o.class_name, o.jersey_number != null ? `No. ${o.jersey_number}` : null]
+                      {[o.admission_no ? `Adm. ${o.admission_no}` : null, gradeLabel(o.class_name)]
                         .filter(Boolean)
                         .join(" · ")}
                     </div>
                   </Td>
-                  <Td>{o.jersey_size}</Td>
+                  <Td>
+                    {[
+                      o.jersey_number != null ? `No. ${o.jersey_number}` : null,
+                      o.print_name,
+                      o.jersey_size,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Td>
                   <Td>{formatCurrency(Number(o.amount))}</Td>
                   <Td>{o.payment_method ?? "—"}</Td>
                   <Td>
                     <Tag tone={pay.tone}>{pay.label}</Tag>
                     {o.payment_status === "submitted" ? (
                       <div className="mt-1 font-condensed text-xs font-semibold tracking-[0.14em] text-brand uppercase">
-                        Check receipt →
+                        Check screenshot →
                       </div>
                     ) : (
                       o.payment_status === "verified" && (
@@ -792,8 +822,9 @@ function OrderDrawer({
 
         <section className="grid gap-6 p-6 sm:grid-cols-2">
           <dl className="grid content-start gap-3 text-sm">
-            <Detail label="Player" value={order.player_name} />
-            <Detail label="Class" value={order.class_name ?? "—"} />
+            <Detail label="Student" value={order.player_name} />
+            <Detail label="Admission no." value={order.admission_no ?? "—"} />
+            <Detail label="Grade" value={gradeLabel(order.class_name)} />
             <Detail
               label="Number"
               value={order.jersey_number != null ? String(order.jersey_number) : "—"}
@@ -1079,7 +1110,7 @@ function ReceiptsTab({
               <Td>
                 {o.player_name}
                 <div className="text-xs text-ink-3">
-                  {o.class_name ?? "—"} · {o.order_id}
+                  {gradeLabel(o.class_name)} · {o.order_id}
                 </div>
               </Td>
               <Td>{o.received_from ?? "—"}</Td>
@@ -1125,6 +1156,7 @@ function ReceiptsTab({
 
 type PlayerDraft = {
   id?: string;
+  admission_no: string;
   full_name: string;
   class_name: string;
   jersey_number: string;
@@ -1134,6 +1166,7 @@ type PlayerDraft = {
   is_active: boolean;
 };
 const emptyDraft: PlayerDraft = {
+  admission_no: "",
   full_name: "",
   class_name: "",
   jersey_number: "",
@@ -1164,7 +1197,7 @@ function PlayersTab({
   const filtered = players.filter(
     (p) =>
       !q ||
-      [p.full_name, p.class_name, p.jersey_number, p.jersey_size].some((v) =>
+      [p.full_name, p.admission_no, p.class_name, p.order_id].some((v) =>
         String(v ?? "")
           .toLowerCase()
           .includes(q),
@@ -1173,7 +1206,7 @@ function PlayersTab({
 
   async function savePlayer() {
     if (!draft) return;
-    if (!draft.full_name.trim()) return notify("Enter the player's name.", true);
+    if (!draft.full_name.trim()) return notify("Enter the student's name.", true);
     const number = draft.jersey_number.trim();
     if (number && !/^\d{1,2}$/.test(number)) return notify("Jersey number must be 0 to 99.", true);
     const chest = draft.chest_in.trim();
@@ -1189,10 +1222,11 @@ function PlayersTab({
       p_jersey_size: draft.jersey_size,
       p_is_active: draft.is_active,
       p_chest_in: chest ? Number(chest) : undefined,
+      p_admission_no: draft.admission_no.trim() || undefined,
     });
     setBusy(false);
     if (error) return notify(error.message, true);
-    notify(draft.id ? "Player updated." : "Player added.");
+    notify(draft.id ? "Student updated." : "Student added.");
     setDraft(null);
     await reload();
   }
@@ -1201,14 +1235,14 @@ function PlayersTab({
     const rows = parsePlayerLines(paste);
     if (rows.errors.length) return notify(rows.errors.join(" "), true);
     if (rows.players.length === 0)
-      return notify("Paste at least one line: name, class, number, chest, size.", true);
+      return notify("Paste at least one line: admission number, name, grade.", true);
     setBusy(true);
     const { data, error } = await supabase.rpc("jersey_admin_import_players", {
       p_rows: rows.players,
     });
     setBusy(false);
     if (error) return notify(error.message, true);
-    notify(`${data} players added.`);
+    notify(`${data} students added or updated.`);
     setPaste("");
     await reload();
   }
@@ -1228,18 +1262,18 @@ function PlayersTab({
           <SearchBox
             value={search}
             onChange={setSearch}
-            placeholder="Search name, class, number, size…"
+            placeholder="Search name, admission no., grade, order…"
           />
         </div>
         <button type="button" onClick={() => setDraft({ ...emptyDraft })} className="pill">
-          <Plus className="size-4" /> Add player
+          <Plus className="size-4" /> Add student
         </button>
       </div>
 
       <TableWrap>
         <thead>
           <tr>
-            {["No.", "Player", "Class", "Chest", "Size", "Order", ""].map((h) => (
+            {["Adm. no.", "Student", "Grade", "Order", ""].map((h) => (
               <Th key={h}>{h}</Th>
             ))}
           </tr>
@@ -1247,10 +1281,10 @@ function PlayersTab({
         <tbody>
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={7} className="p-10 text-center text-ink-2">
+              <td colSpan={5} className="p-10 text-center text-ink-2">
                 {players.length === 0
-                  ? "No players yet. Add them one by one, or paste the full list below."
-                  : "No players match."}
+                  ? "No students yet. Add them one by one, or paste the full list below."
+                  : "No students match."}
               </td>
             </tr>
           ) : (
@@ -1261,23 +1295,14 @@ function PlayersTab({
                   key={p.id}
                   className={`border-b border-line last:border-0 ${p.is_active ? "" : "opacity-50"}`}
                 >
-                  <Td>
-                    <span className="grid size-[34px] place-items-center rounded-md bg-paper font-condensed font-semibold tracking-[0.16em] text-[13px] text-brand">
-                      {p.jersey_number ?? "–"}
-                    </span>
+                  <Td className="font-condensed font-semibold tracking-wide tabular-nums">
+                    {p.admission_no ?? "—"}
                   </Td>
                   <Td>
                     <b>{p.full_name}</b>
-                    <div className="text-xs text-ink-3">
-                      {p.print_name ? `Prints "${p.print_name}"` : ""}
-                      {!p.is_active && " · hidden from parents"}
-                    </div>
+                    {!p.is_active && <div className="text-xs text-ink-3">Hidden from parents</div>}
                   </Td>
-                  <Td>{p.class_name ?? "—"}</Td>
-                  <Td>{p.chest_in != null ? `${Number(p.chest_in)}"` : "—"}</Td>
-                  <Td>
-                    <span className="font-display text-lg text-brand">{p.jersey_size ?? "—"}</span>
-                  </Td>
+                  <Td>{gradeLabel(p.class_name)}</Td>
                   <Td>
                     {tag ? (
                       <Tag tone={tag.tone}>{tag.label}</Tag>
@@ -1293,6 +1318,7 @@ function PlayersTab({
                         onClick={() =>
                           setDraft({
                             id: p.id,
+                            admission_no: p.admission_no ?? "",
                             full_name: p.full_name,
                             class_name: p.class_name ?? "",
                             jersey_number: p.jersey_number != null ? String(p.jersey_number) : "",
@@ -1325,12 +1351,12 @@ function PlayersTab({
       </TableWrap>
 
       <div className="card mt-4 grid gap-3">
-        <h3 className="h-md">Add many players at once</h3>
+        <h3 className="h-md">Add many students at once</h3>
         <p className="m-0 text-sm text-ink-2">
-          Use the Excel template: <b>Name, Class, Jersey No., Chest (inches), Size, Print name</b>.
-          Fill in the chest or the size. If the size is empty, it is worked out from the chest using
-          the size chart. Upload the file saved as CSV, or copy the rows from Excel and paste them
-          here.
+          Copy the student list from Excel (with its header row) and paste it here, or upload it
+          saved as CSV. Only <b>Admission Number, Student Name and Class</b> are saved; other
+          columns such as phone numbers are ignored. A student whose admission number is already
+          here is updated, not added twice. Parents choose the jersey number, name and size.
         </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={downloadTemplate} className="pill pill-dark pill-sm">
@@ -1355,23 +1381,23 @@ function PlayersTab({
           onChange={(e) => setPaste(e.target.value)}
           rows={6}
           placeholder={
-            "Aarav Krishnan, Grade 5 A, 7, 14, , \nDiya Raman, Grade 5 A, 11, , 26, DIYA R"
+            "Admission Number, Student Name, Class & Sec\n46962026, KUSHAL R, GRADE_VI-A"
           }
           className="field-input font-mono text-[13px]"
         />
-        {paste.trim() && <ImportPreview text={paste} chart={settings.size_chart} />}
+        {paste.trim() && <ImportPreview text={paste} />}
         <button
           type="button"
           disabled={busy || !paste.trim()}
           onClick={() => void importPlayers()}
           className="pill justify-self-start"
         >
-          {busy ? "Adding…" : `Add ${parsePlayerLines(paste).players.length || ""} players`}
+          {busy ? "Saving…" : `Save ${parsePlayerLines(paste).players.length || ""} students`}
         </button>
       </div>
 
       {draft && (
-        <Modal title={draft.id ? "Edit player" : "Add player"} onClose={() => setDraft(null)}>
+        <Modal title={draft.id ? "Edit student" : "Add student"} onClose={() => setDraft(null)}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Full name">
               <input
@@ -1380,65 +1406,19 @@ function PlayersTab({
                 className="field-input"
               />
             </Field>
-            <Field label="Class">
+            <Field label="Admission number">
+              <input
+                value={draft.admission_no}
+                inputMode="numeric"
+                onChange={(e) => setDraft({ ...draft, admission_no: e.target.value })}
+                className="field-input"
+              />
+            </Field>
+            <Field label="Grade">
               <input
                 value={draft.class_name}
                 onChange={(e) => setDraft({ ...draft, class_name: e.target.value })}
-                placeholder="e.g. Grade 5 A"
-                className="field-input"
-              />
-            </Field>
-            <Field label="Jersey number">
-              <input
-                value={draft.jersey_number}
-                inputMode="numeric"
-                onChange={(e) => setDraft({ ...draft, jersey_number: e.target.value })}
-                className="field-input"
-              />
-            </Field>
-            <Field label="Chest (inches, armpit to armpit)">
-              <input
-                value={draft.chest_in}
-                inputMode="decimal"
-                placeholder="e.g. 14.5"
-                onChange={(e) => {
-                  const chest_in = e.target.value;
-                  const fromChart = sizeForChest(settings.size_chart, Number(chest_in));
-                  setDraft({ ...draft, chest_in, jersey_size: fromChart ?? draft.jersey_size });
-                }}
-                className="field-input"
-              />
-              {draft.chest_in && sizeForChest(settings.size_chart, Number(draft.chest_in)) && (
-                <span className="text-xs text-brand">
-                  Size chart → size {sizeForChest(settings.size_chart, Number(draft.chest_in))}
-                </span>
-              )}
-            </Field>
-            <Field label="Jersey size">
-              <select
-                value={draft.jersey_size}
-                onChange={(e) => setDraft({ ...draft, jersey_size: e.target.value })}
-                className="field-input"
-              >
-                <option value="">Not set</option>
-                {[
-                  ...new Set([
-                    ...(draft.jersey_size ? [draft.jersey_size] : []),
-                    ...settings.sizes,
-                  ]),
-                ].map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Name to print (optional)">
-              <input
-                value={draft.print_name}
-                maxLength={20}
-                onChange={(e) => setDraft({ ...draft, print_name: e.target.value.toUpperCase() })}
-                placeholder="Defaults to the first name"
+                placeholder="e.g. GRADE_VI-A"
                 className="field-input"
               />
             </Field>
@@ -1462,7 +1442,7 @@ function PlayersTab({
                 }}
                 className="label inline-flex items-center gap-1.5 text-bad"
               >
-                <Trash2 className="size-3.5" /> Remove player
+                <Trash2 className="size-3.5" /> Remove student
               </button>
             ) : (
               <span />
@@ -1473,7 +1453,7 @@ function PlayersTab({
               onClick={() => void savePlayer()}
               className="pill"
             >
-              {busy ? "Saving…" : "Save player"}
+              {busy ? "Saving…" : "Save student"}
             </button>
           </div>
         </Modal>
@@ -1582,65 +1562,71 @@ function CashModal({
   );
 }
 
-const TEMPLATE_HEADER = "Name,Class,Jersey No.,Chest (inches),Size,Print name";
+const TEMPLATE_HEADER = "Admission Number,Student Name,Class & Sec";
 
 function downloadTemplate() {
-  const csv = `${TEMPLATE_HEADER}\nAarav Krishnan,Grade 5 A,7,14,,\nDiya Raman,Grade 5 A,11,,26,DIYA R\n`;
+  const csv = `${TEMPLATE_HEADER}\n46962026,KUSHAL R,GRADE_VI-A\n45782026,JENITA MARY V,LKG-A\n`;
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = "mms-jersey-players-template.csv";
+  a.download = "mms-jersey-students-template.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
 
+// Header names the school's student list uses, matched loosely.
+const COLUMN_MATCHERS = {
+  admission_no: /admission|adm\.?\s*no/i,
+  full_name: /student\s*name|^name$/i,
+  class_name: /class|grade/i,
+} as const;
+
 /**
- * Parses "name, class, number, chest, size[, print name]" lines (the template's columns).
- * Tabs (copied from Excel) work too, and a header row is skipped.
+ * Reads the student list pasted from Excel (tabs) or a CSV file. With a header row, the
+ * Admission Number, Student Name and Class columns are found by name and everything else
+ * (date of birth, phone numbers…) is ignored. Without one, the columns are taken as
+ * admission number, name, class.
  */
 function parsePlayerLines(text: string) {
-  const players: {
-    full_name: string;
-    class_name: string;
-    jersey_number: string;
-    chest_in: string;
-    jersey_size: string;
-    print_name: string;
-  }[] = [];
+  const players: { admission_no: string; full_name: string; class_name: string }[] = [];
   const errors: string[] = [];
-  text
+  const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
-    .forEach((line, i) => {
-      const [name = "", cls = "", num = "", chest = "", size = "", print = ""] = line
-        .split(/\t|,/)
-        .map((v) => v.trim().replace(/^"|"$/g, ""));
-      if (!name) return;
-      if (/^name$/i.test(name)) return; // header row
-      if (num && !/^\d{1,2}$/.test(num)) {
-        errors.push(`Line ${i + 1}: "${num}" is not a jersey number from 0 to 99.`);
-        return;
-      }
-      const chestValue = chest.replace(/["in ]/gi, "");
-      if (chestValue && !(Number(chestValue) >= 5 && Number(chestValue) <= 40)) {
-        errors.push(`Line ${i + 1}: "${chest}" is not a chest size in inches.`);
-        return;
-      }
-      players.push({
-        full_name: name,
-        class_name: cls,
-        jersey_number: num,
-        chest_in: chestValue,
-        jersey_size: size,
-        print_name: print,
-      });
-    });
+    .map((l) => l.split(l.includes("\t") ? "\t" : ",").map((v) => v.trim().replace(/^"|"$/g, "")));
+  if (lines.length === 0) return { players, errors };
+
+  let cols = { admission_no: 0, full_name: 1, class_name: 2 };
+  const header = lines[0]!;
+  const found = (Object.keys(COLUMN_MATCHERS) as (keyof typeof COLUMN_MATCHERS)[]).map((k) => [
+    k,
+    header.findIndex((h) => COLUMN_MATCHERS[k].test(h)),
+  ]) as [keyof typeof cols, number][];
+  const hasHeader = found.some(([, i]) => i >= 0);
+  if (hasHeader) {
+    if (found.some(([, i]) => i < 0)) {
+      errors.push("The header row needs Admission Number, Student Name and Class columns.");
+      return { players, errors };
+    }
+    cols = Object.fromEntries(found) as typeof cols;
+  }
+
+  lines.slice(hasHeader ? 1 : 0).forEach((cells, i) => {
+    const full_name = cells[cols.full_name] ?? "";
+    const admission_no = cells[cols.admission_no] ?? "";
+    if (!full_name) return;
+    if (admission_no && !/^[A-Za-z0-9/-]{1,20}$/.test(admission_no)) {
+      errors.push(`Line ${i + 1}: "${admission_no}" doesn't look like an admission number.`);
+      return;
+    }
+    players.push({ admission_no, full_name, class_name: cells[cols.class_name] ?? "" });
+  });
   return { players, errors };
 }
 
-/** Shows the first rows as they will be saved, with the size worked out from the chest. */
-function ImportPreview({ text, chart }: { text: string; chart: SizeChartRow[] }) {
+/** Shows the first rows as they will be saved. */
+function ImportPreview({ text }: { text: string }) {
   const { players, errors } = parsePlayerLines(text);
   return (
     <div className="grid gap-2">
@@ -1651,32 +1637,22 @@ function ImportPreview({ text, chart }: { text: string; chart: SizeChartRow[] })
       ))}
       {players.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-line">
-          <table className="w-full min-w-[520px] text-left text-sm">
+          <table className="w-full min-w-[420px] text-left text-sm">
             <thead>
               <tr>
-                {["Name", "Class", "No.", "Chest", "Size"].map((h) => (
+                {["Adm. no.", "Student", "Grade"].map((h) => (
                   <Th key={h}>{h}</Th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {players.slice(0, 8).map((p, i) => {
-                const fromChart = !p.jersey_size && sizeForChest(chart, Number(p.chest_in));
-                return (
-                  <tr key={i} className="border-b border-line last:border-0">
-                    <Td>{p.full_name}</Td>
-                    <Td>{p.class_name || "—"}</Td>
-                    <Td>{p.jersey_number || "—"}</Td>
-                    <Td>{p.chest_in ? `${p.chest_in}"` : "—"}</Td>
-                    <Td>
-                      <span className="font-display text-brand">
-                        {p.jersey_size || fromChart || "—"}
-                      </span>
-                      {fromChart && <span className="ml-2 text-xs text-ink-3">from chart</span>}
-                    </Td>
-                  </tr>
-                );
-              })}
+              {players.slice(0, 8).map((p, i) => (
+                <tr key={i} className="border-b border-line last:border-0">
+                  <Td>{p.admission_no || "—"}</Td>
+                  <Td>{p.full_name}</Td>
+                  <Td>{gradeLabel(p.class_name)}</Td>
+                </tr>
+              ))}
             </tbody>
           </table>
           {players.length > 8 && (
@@ -2083,8 +2059,9 @@ function exportCsv(orders: JerseyOrder[]) {
   const head = [
     "Order ID",
     "Placed",
-    "Player",
-    "Class",
+    "Student",
+    "Admission no.",
+    "Grade",
     "Number",
     "Print name",
     "Size",
@@ -2103,7 +2080,8 @@ function exportCsv(orders: JerseyOrder[]) {
       o.order_id,
       o.created_at,
       o.player_name,
-      o.class_name,
+      o.admission_no,
+      gradeLabel(o.class_name),
       o.jersey_number,
       o.print_name,
       o.jersey_size,

@@ -1,22 +1,31 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import { CheckIcon, SiteFooter, SiteHeader, Tag } from "@/components/brand";
+import { SiteFooter, SiteHeader, Tag } from "@/components/brand";
+import { PaymentPanel, PaymentState } from "@/components/order-flow";
 import { supabase } from "@/integrations/supabase/client";
-import type { JerseyOrder } from "@/integrations/supabase/types";
-import { ORDER_STATUS_LABELS, formatCurrency, paymentLabel, loadSavedOrders } from "@/lib/jersey";
+import type { JerseyOrder, JerseySettings } from "@/integrations/supabase/types";
+import { ORDER_STATUS_LABELS, formatCurrency, gradeLabel, loadSavedOrders } from "@/lib/jersey";
 
 export const Route = createFileRoute("/status")({
   head: () => ({ meta: [{ title: "My orders · MMS Jersey" }] }),
   component: StatusPage,
 });
 
-type Row = { orderId: string; playerName: string; order: JerseyOrder | null; error: string | null };
+type Row = {
+  orderId: string;
+  token: string;
+  playerName: string;
+  order: JerseyOrder | null;
+  error: string | null;
+};
 
 function StatusPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [settings, setSettings] = useState<JerseySettings | null>(null);
 
   useEffect(() => {
+    void supabase.rpc("jersey_get_settings").then(({ data }) => setSettings(data ?? null));
     const saved = loadSavedOrders();
     void Promise.all(
       saved.map(async (s): Promise<Row> => {
@@ -26,6 +35,7 @@ function StatusPage() {
         });
         return {
           orderId: s.orderId,
+          token: s.token,
           playerName: s.playerName,
           order: data ?? null,
           error: error?.message ?? null,
@@ -63,7 +73,18 @@ function StatusPage() {
               </Link>
             </div>
           ) : (
-            rows.map((r) => <OrderCard key={r.orderId} row={r} />)
+            rows.map((r) => (
+              <OrderCard
+                key={r.orderId}
+                row={r}
+                settings={settings}
+                onChange={(order) =>
+                  setRows((prev) =>
+                    (prev ?? []).map((x) => (x.orderId === r.orderId ? { ...x, order } : x)),
+                  )
+                }
+              />
+            ))
           )}
         </div>
       </section>
@@ -78,7 +99,16 @@ function StatusPage() {
   );
 }
 
-function OrderCard({ row }: { row: Row }) {
+function OrderCard({
+  row,
+  settings,
+  onChange,
+}: {
+  row: Row;
+  settings: JerseySettings | null;
+  onChange: (order: JerseyOrder) => void;
+}) {
+  const [paying, setPaying] = useState(false);
   const o = row.order;
   if (!o)
     return (
@@ -89,51 +119,55 @@ function OrderCard({ row }: { row: Row }) {
         </p>
       </div>
     );
-  const pay = paymentLabel(o.payment_status);
-  const verified = o.payment_status === "verified";
+  const unpaid =
+    (o.payment_status === "pending" || o.payment_status === "rejected") &&
+    o.order_status !== "cancelled";
   return (
-    <div className="card grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="card grid gap-5 md:grid-cols-[minmax(0,1fr)_300px] md:items-start">
       <div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="rounded-md border border-brand/40 bg-brand-soft px-3 py-1.5 text-brand font-display text-lg text-white">
+          <span className="rounded-md border border-brand/40 bg-brand-soft px-3 py-1.5 font-display text-lg text-white">
             {o.order_id}
           </span>
-          <Tag tone={pay.tone}>{pay.label}</Tag>
           <Tag tone="plain">{ORDER_STATUS_LABELS[o.order_status] ?? o.order_status}</Tag>
         </div>
         <h2 className="h-md mt-4">{o.player_name}</h2>
         <p className="mt-2 text-sm text-ink-2">
           {[
-            o.class_name,
+            o.admission_no ? `Adm. ${o.admission_no}` : null,
+            gradeLabel(o.class_name),
             o.jersey_number != null ? `No. ${o.jersey_number}` : null,
+            o.print_name ? `"${o.print_name}"` : null,
             `Size ${o.jersey_size}`,
             formatCurrency(Number(o.amount)),
           ]
             .filter(Boolean)
             .join(" · ")}
         </p>
-        {o.payment_status === "rejected" && (
-          <p className="mt-3 rounded-lg bg-bad-bg px-4 py-3 text-sm text-bad">
-            The school could not accept this payment
-            {o.payment_rejection_reason ? `: ${o.payment_rejection_reason}` : ""}. Please pick your
-            child's name again on the order page and upload a new screenshot.
+        {unpaid && !paying && (
+          <button type="button" onClick={() => setPaying(true)} className="pill mt-5">
+            Pay {formatCurrency(Number(o.amount))} now
+          </button>
+        )}
+        {unpaid && !paying && (
+          <p className="mt-3 text-[12.5px] text-ink-3">
+            Or pay cash at the school office and collect a receipt.
           </p>
         )}
       </div>
-      {o.payment_status === "rejected" ? (
-        <Link to="/" hash="order" className="pill">
-          Pay again
-        </Link>
-      ) : (
-        <div
-          className={`grid size-14 place-items-center rounded-full ${verified ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}
-          aria-hidden="true"
-        >
-          {verified ? (
-            <CheckIcon className="size-7" />
-          ) : (
-            <span className="text-xl font-black">…</span>
-          )}
+      <PaymentState order={o} />
+      {paying && settings && (
+        <div className="border-t border-line pt-5 md:col-span-2">
+          <PaymentPanel
+            settings={settings}
+            order={o}
+            token={row.token}
+            onPaid={(updated) => {
+              onChange(updated);
+              setPaying(false);
+            }}
+            onLater={() => setPaying(false)}
+          />
         </div>
       )}
     </div>

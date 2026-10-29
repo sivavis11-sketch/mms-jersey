@@ -1,10 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { Copy, Download, Search, Upload } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { CheckIcon, JerseyArt, PillButton, Tag } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
-import type { JerseyOrder, JerseySettings, PublicPlayer } from "@/integrations/supabase/types";
+import type {
+  JerseyOrder,
+  JerseySettings,
+  PaymentStatus,
+  StudentMatch,
+} from "@/integrations/supabase/types";
 import {
   MAX_PROOF_BYTES,
   ORDER_STATE_TAGS,
@@ -14,37 +19,37 @@ import {
   buildQrUrl,
   buildUpiUri,
   formatCurrency,
+  gradeLabel,
   initials,
   printName,
   saveOrder,
+  sizeForChest,
   type PaymentMethod,
 } from "@/lib/jersey";
 
-const STEPS = ["Find your child", "Check details", "Make payment", "Upload & order"];
+const STEPS = ["Find your child", "Jersey details", "Place order", "Payment"];
+const SEARCH_MIN = 3;
 
-export function OrderFlow({
-  settings,
-  players,
-  onOrderPlaced,
-}: {
-  settings: JerseySettings;
-  players: PublicPlayer[];
-  onOrderPlaced: () => void;
-}) {
+export function OrderFlow({ settings }: { settings: JerseySettings }) {
   const [step, setStep] = useState(0);
-  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [student, setStudent] = useState<StudentMatch | null>(null);
+  const [number, setNumber] = useState("");
+  const [print, setPrint] = useState("");
   const [size, setSize] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [method, setMethod] = useState<PaymentMethod>("UPI");
-  const [proof, setProof] = useState<File | null>(null);
-  const [reference, setReference] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [placed, setPlaced] = useState<JerseyOrder | null>(null);
+  const [placed, setPlaced] = useState<PlacedOrder | null>(null);
 
-  const player = players.find((p) => p.id === playerId) ?? null;
   const amount = Number(settings.unit_price);
-  const sizeLocked = !settings.parents_can_change_size && !!player?.jersey_size;
+  const jerseyNumber = number === "" ? null : Number(number);
+  const numberOk =
+    jerseyNumber != null &&
+    Number.isInteger(jerseyNumber) &&
+    jerseyNumber >= 0 &&
+    jerseyNumber <= 99;
+  const printOk = PRINT_NAME_RE.test(print.trim());
+  const detailsOk = numberOk && printOk && !!size;
 
   function go(next: number) {
     setError(null);
@@ -52,46 +57,31 @@ export function OrderFlow({
     document.getElementById("order")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function pickPlayer(p: PublicPlayer) {
-    setPlayerId(p.id);
-    setSize(p.jersey_size);
+  function pickStudent(s: StudentMatch) {
+    if (s.id !== student?.id) {
+      setNumber("");
+      setPrint("");
+      setSize(null);
+    }
+    setStudent(s);
     setConfirmed(false);
   }
 
   async function placeOrder() {
-    if (!player || !size || submitting) return;
+    if (!student || !detailsOk || submitting) return;
     setError(null);
-    if (!proof) return setError("Please upload your payment screenshot.");
-    if (proof.size > MAX_PROOF_BYTES) return setError("The screenshot must be 5 MB or smaller.");
-    if (proof.type && !PROOF_TYPES.includes(proof.type))
-      return setError("The screenshot must be a photo (JPG, PNG, WEBP, HEIC) or a PDF.");
-
     setSubmitting(true);
     try {
-      const safeName = proof.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-60);
-      const path = `proofs/${player.id}/${Date.now()}-${safeName}`;
-      const { error: uploadError } = await supabase.storage
-        .from("jersey-proofs")
-        .upload(
-          path,
-          proof,
-          proof.type ? { upsert: false, contentType: proof.type } : { upsert: false },
-        );
-      if (uploadError) throw new Error(uploadError.message);
-
       const { data, error: rpcError } = await supabase.rpc("jersey_place_order", {
-        p_player_id: player.id,
-        p_jersey_size: size,
-        p_payment_method: method,
-        p_payment_proof: path,
-        p_payment_reference: reference.trim() || undefined,
+        p_player_id: student.id,
+        p_jersey_number: jerseyNumber!,
+        p_print_name: print.trim(),
+        p_jersey_size: size!,
       });
       if (rpcError || !data) throw new Error(rpcError?.message ?? "The order could not be saved.");
       saveOrder({ orderId: data.order_id, token: data.access_token, playerName: data.player_name });
       setPlaced(data);
-      setStep(4);
-      onOrderPlaced();
-      document.getElementById("order")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      go(3);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "We couldn't place the order. Please try again.",
@@ -103,11 +93,11 @@ export function OrderFlow({
 
   function restart() {
     setStep(0);
-    setPlayerId(null);
+    setStudent(null);
+    setNumber("");
+    setPrint("");
     setSize(null);
     setConfirmed(false);
-    setProof(null);
-    setReference("");
     setPlaced(null);
   }
 
@@ -116,7 +106,8 @@ export function OrderFlow({
       <ol className="mb-6 grid grid-cols-4 gap-3 sm:gap-4">
         {STEPS.map((label, i) => {
           const reached = step === 4 || i <= step;
-          const canGoBack = i < step && step < 4;
+          // Once the order is placed, the earlier steps are done and can't be reopened.
+          const canGoBack = i < step && step < 3;
           return (
             <li key={label}>
               <button
@@ -172,60 +163,78 @@ export function OrderFlow({
             </p>
           )}
 
-          {step === 0 && (
-            <FindStep
-              players={players}
-              selectedId={playerId}
-              onPick={pickPlayer}
-              onNext={() => go(1)}
-            />
+          {step === 0 && <FindStep selected={student} onPick={pickStudent} onNext={() => go(1)} />}
+
+          {step === 1 && student && (
+            <div>
+              <dl className="mb-5 grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <Fact label="Student" value={student.full_name} />
+                </div>
+                <Fact label="Admission no." value={student.admission_no ?? "—"} />
+                <Fact label="Grade" value={gradeLabel(student.class_name)} />
+              </dl>
+              <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+                <label className="grid gap-2">
+                  <span className="label text-ink-2">Jersey no.</span>
+                  <input
+                    id="jersey-number"
+                    value={number}
+                    onChange={(e) => setNumber(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                    inputMode="numeric"
+                    placeholder="0–99"
+                    className="field-input font-display text-2xl"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="label text-ink-2">Name to print</span>
+                  <input
+                    id="print-name"
+                    value={print}
+                    onChange={(e) =>
+                      setPrint(
+                        e.target.value
+                          .toUpperCase()
+                          .replace(/[^A-Z .'-]/g, "")
+                          .slice(0, 12),
+                      )
+                    }
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    placeholder={student.full_name.split(" ")[0]?.slice(0, 12)}
+                    className="field-input font-display text-2xl tracking-wide"
+                  />
+                </label>
+              </div>
+              <p className="mt-2 text-[12.5px] text-ink-3">
+                Number from 0 to 99. Name up to 12 letters, printed in capitals.
+              </p>
+              <SizePicker settings={settings} size={size} onChange={setSize} />
+              <Actions onBack={() => go(0)}>
+                <PillButton type="button" disabled={!detailsOk} onClick={() => go(2)}>
+                  Continue
+                </PillButton>
+              </Actions>
+            </div>
           )}
 
-          {step === 1 && player && (
+          {step === 2 && student && (
             <div>
               <p className="-mt-2 mb-5 text-sm text-ink-2">
-                This is what the school has on file. It is printed exactly like this.
+                Check everything once more. It is printed exactly like this.
               </p>
-              <dl className="mb-5 grid gap-2 sm:grid-cols-2">
-                <Fact label="Player name" value={player.full_name} />
-                <Fact label="Class" value={player.class_name ?? "—"} />
-                <Fact
-                  label="Jersey number"
-                  value={player.jersey_number != null ? String(player.jersey_number) : "—"}
+              <dl>
+                <ReceiptLine label="Student" value={student.full_name} />
+                <ReceiptLine
+                  label="Adm. no. · Grade"
+                  value={`${student.admission_no ?? "—"} · ${gradeLabel(student.class_name)}`}
                 />
-                <Fact label="Name on jersey" value={printName(player)} />
+                <ReceiptLine
+                  label="Jersey"
+                  value={`No. ${number} · "${print.trim()}" · Size ${size}`}
+                />
+                <ReceiptLine label="Price" value={formatCurrency(amount)} />
               </dl>
-              <div className="label text-ink-2">Jersey size</div>
-              {sizeLocked ? (
-                <div className="mt-2 inline-flex rounded-lg border border-brand bg-brand-soft px-6 py-3 font-display text-xl text-brand">
-                  {size}
-                </div>
-              ) : (
-                <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(56px,1fr))] gap-1.5">
-                  {sizeOptions(settings.sizes, player.jersey_size).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      aria-pressed={size === option}
-                      onClick={() => setSize(option)}
-                      className={`rounded-lg border py-3.5 font-condensed text-base tracking-wide ${
-                        size === option
-                          ? "border-brand bg-brand-soft text-brand"
-                          : "border-line text-white/55 hover:border-white/40"
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="mt-2 text-[12.5px] text-ink-3">
-                {sizeLocked
-                  ? "The size is set by the school. Contact the school office if it needs to change."
-                  : player.jersey_size
-                    ? `The school suggested size ${player.jersey_size}. Change it only if your child has grown.`
-                    : "Choose your child's size."}
-              </p>
               <label className="mt-5 flex items-start gap-2.5 rounded-lg border border-brand/30 bg-brand-soft p-4 text-sm">
                 <input
                   type="checkbox"
@@ -233,87 +242,35 @@ export function OrderFlow({
                   onChange={(e) => setConfirmed(e.target.checked)}
                   className="mt-0.5 size-[18px] flex-none accent-[var(--orange)]"
                 />
-                I have checked the name, number and size. They are correct.
+                The number, name and size are correct.
               </label>
-              <Actions onBack={() => go(0)}>
-                <PillButton type="button" disabled={!confirmed || !size} onClick={() => go(2)}>
-                  Go to payment
-                </PillButton>
-              </Actions>
-            </div>
-          )}
-
-          {step === 2 && player && (
-            <div>
-              <p className="-mt-2 mb-5 text-sm text-ink-2">
-                Pay by any one method, then take a screenshot of the success screen.
+              <p className="mt-3 text-[12.5px] text-ink-3">
+                Next you'll see how to pay. You can also pay later from "My orders", or in cash at
+                the school office.
               </p>
-              <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand-soft px-5 py-4">
-                <span className="label">Amount to pay</span>
-                <b className="font-display text-4xl leading-none font-normal text-brand">
-                  {formatCurrency(amount)}
-                </b>
-              </div>
-              <div className="mb-3.5 grid grid-cols-3 gap-1.5">
-                {PAYMENT_METHODS.map((m) => (
-                  <button
-                    key={m.value}
-                    type="button"
-                    aria-pressed={method === m.value}
-                    onClick={() => setMethod(m.value)}
-                    className={`rounded-lg border px-2 py-3.5 font-condensed text-sm font-semibold tracking-[0.18em] uppercase ${
-                      method === m.value
-                        ? "border-brand bg-brand-soft text-brand"
-                        : "border-line text-white/60 hover:border-white/40"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-              <PaymentDetails
-                settings={settings}
-                method={method}
-                amount={amount}
-                note={`Jersey ${player.full_name}`}
-              />
               <Actions onBack={() => go(1)}>
-                <PillButton type="button" onClick={() => go(3)}>
-                  I have paid
-                </PillButton>
-              </Actions>
-            </div>
-          )}
-
-          {step === 3 && player && (
-            <div>
-              <p className="-mt-2 mb-5 text-sm text-ink-2">
-                Add the payment screenshot. The school checks it and confirms your order.
-              </p>
-              <ProofPicker file={proof} onChange={setProof} />
-              <label className="mt-3.5 grid gap-2">
-                <span className="font-condensed text-xs tracking-[0.22em] text-ink-2 uppercase">
-                  UTR / reference number (optional)
-                </span>
-                <input
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  inputMode="numeric"
-                  maxLength={40}
-                  placeholder="12-digit number from the UPI app"
-                  className="field-input"
-                />
-              </label>
-              <Actions onBack={() => go(2)}>
                 <PillButton
                   type="button"
-                  disabled={!proof || submitting}
+                  disabled={!confirmed || submitting}
                   onClick={() => void placeOrder()}
                 >
-                  {submitting ? "Placing order…" : `Place order · ${formatCurrency(amount)}`}
+                  {submitting ? "Placing order…" : "Place order"}
                 </PillButton>
               </Actions>
             </div>
+          )}
+
+          {step === 3 && placed && (
+            <PaymentPanel
+              settings={settings}
+              order={placed}
+              token={placed.access_token}
+              onPaid={(o) => {
+                setPlaced({ ...o, access_token: placed.access_token });
+                go(4);
+              }}
+              onLater={() => go(4)}
+            />
           )}
 
           {step === 4 && placed && <PlacedReceipt order={placed} onRestart={restart} />}
@@ -325,10 +282,8 @@ export function OrderFlow({
           <div className="grid aspect-[5/4] place-items-center overflow-hidden rounded-lg bg-[radial-gradient(circle_at_50%_40%,rgba(255,77,18,0.28),#0a0a0a_70%)]">
             <JerseyArt
               image={settings.jersey_image_url}
-              name={player ? printName(player) : "YOUR NAME"}
-              number={
-                player?.jersey_number != null ? String(player.jersey_number).padStart(2, "0") : "00"
-              }
+              name={print.trim() || "YOUR NAME"}
+              number={numberOk ? String(jerseyNumber).padStart(2, "0") : "00"}
               className={
                 settings.jersey_image_url
                   ? "size-full object-cover"
@@ -340,12 +295,9 @@ export function OrderFlow({
             Your order
           </div>
           <dl className="mt-3 grid gap-2 text-sm">
-            <SumRow label="Player" value={player?.full_name ?? "—"} />
-            <SumRow label="Class" value={player?.class_name ?? "—"} />
-            <SumRow
-              label="Number"
-              value={player?.jersey_number != null ? String(player.jersey_number) : "—"}
-            />
+            <SumRow label="Student" value={student?.full_name ?? "—"} />
+            <SumRow label="Grade" value={student ? gradeLabel(student.class_name) : "—"} />
+            <SumRow label="Number" value={numberOk ? String(jerseyNumber) : "—"} />
             <SumRow label="Size" value={size ?? "—"} />
           </dl>
           <div className="mt-5 flex items-baseline justify-between gap-4 rounded-lg border border-brand/30 bg-brand-soft px-4 py-3.5">
@@ -360,9 +312,219 @@ export function OrderFlow({
   );
 }
 
-/** The "order placed" card: the child's own jersey on top, then a receipt. */
+type PlacedOrder = JerseyOrder & { access_token: string };
+
+// Letters, spaces, dots, apostrophes and hyphens; must start with a letter. Same rule as the database.
+const PRINT_NAME_RE = /^[A-Z][A-Z .'-]{0,11}$/;
+
+function SizePicker({
+  settings,
+  size,
+  onChange,
+}: {
+  settings: JerseySettings;
+  size: string | null;
+  onChange: (s: string) => void;
+}) {
+  const [chest, setChest] = useState("");
+  const hasChart = settings.size_chart.length > 0;
+  return (
+    <div className="mt-6">
+      <div className="label text-ink-2">Jersey size</div>
+      {hasChart && (
+        <label className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-line bg-ink px-4 py-3">
+          <span>
+            <span className="block text-sm font-semibold">Chest size in inches (optional)</span>
+            <span className="text-[12.5px] text-ink-3">
+              Measure armpit to armpit. We pick the size for you.
+            </span>
+          </span>
+          <input
+            id="chest-in"
+            value={chest}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^\d.]/g, "").slice(0, 4);
+              setChest(v);
+              const picked = sizeForChest(settings.size_chart, Number(v));
+              if (picked) onChange(picked);
+            }}
+            inputMode="decimal"
+            placeholder="15"
+            className="field-input w-20 flex-none text-center"
+          />
+        </label>
+      )}
+      <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(56px,1fr))] gap-1.5">
+        {settings.sizes.map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={size === option}
+            onClick={() => onChange(option)}
+            className={`rounded-lg border py-3.5 font-condensed text-base tracking-wide ${
+              size === option
+                ? "border-brand bg-brand-soft text-brand"
+                : "border-line text-white/55 hover:border-white/40"
+            }`}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      {size && chest && Number(chest) > 0 && (
+        <p className="mt-2 text-[12.5px] text-ink-3">
+          Chest {chest} in → size {size}. You can tap another size.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Pay for a placed order: UPI, QR or bank, then the screenshot. Also used on "My orders". */
+export function PaymentPanel({
+  settings,
+  order,
+  token,
+  onPaid,
+  onLater,
+}: {
+  settings: JerseySettings;
+  order: JerseyOrder;
+  token: string;
+  onPaid: (order: JerseyOrder) => void;
+  onLater?: () => void;
+}) {
+  const [method, setMethod] = useState<PaymentMethod>("QR");
+  const [proof, setProof] = useState<File | null>(null);
+  const [reference, setReference] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const amount = Number(order.amount);
+
+  async function submit() {
+    if (submitting) return;
+    setError(null);
+    if (!proof) return setError("Please upload your payment screenshot.");
+    if (proof.size > MAX_PROOF_BYTES) return setError("The screenshot must be 5 MB or smaller.");
+    if (proof.type && !PROOF_TYPES.includes(proof.type))
+      return setError("The screenshot must be a photo (JPG, PNG, WEBP, HEIC) or a PDF.");
+    setSubmitting(true);
+    try {
+      const safeName = proof.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-60);
+      const path = `proofs/${order.order_id}/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("jersey-proofs")
+        .upload(
+          path,
+          proof,
+          proof.type ? { upsert: false, contentType: proof.type } : { upsert: false },
+        );
+      if (uploadError) throw new Error(uploadError.message);
+      const { data, error: rpcError } = await supabase.rpc("jersey_submit_payment", {
+        p_order_id: order.order_id,
+        p_access_token: token,
+        p_payment_method: method,
+        p_payment_proof: path,
+        p_payment_reference: reference.trim() || undefined,
+      });
+      if (rpcError || !data)
+        throw new Error(rpcError?.message ?? "The payment could not be saved.");
+      onPaid(data);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "We couldn't save the payment. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="-mt-2 mb-4 flex flex-wrap items-center gap-2 text-sm text-ink-2">
+        <Tag tone="bad">Not paid</Tag>
+        <span>
+          Order <b className="text-white">{order.order_id}</b> is placed. Pay now to confirm it.
+        </span>
+      </div>
+      {order.payment_status === "rejected" && (
+        <p className="mb-4 rounded-lg border border-bad/40 bg-bad-bg px-4 py-3 text-sm text-bad">
+          The school could not accept the last payment
+          {order.payment_rejection_reason ? `: ${order.payment_rejection_reason}` : ""}. Please pay
+          again or upload a clearer screenshot.
+        </p>
+      )}
+      {error && (
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-bad/40 bg-bad-bg px-4 py-3 text-sm text-bad"
+        >
+          {error}
+        </p>
+      )}
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand-soft px-5 py-4">
+        <span className="label">Amount to pay</span>
+        <b className="font-display text-4xl leading-none font-normal text-brand">
+          {formatCurrency(amount)}
+        </b>
+      </div>
+      <div className="mb-3.5 grid grid-cols-3 gap-1.5">
+        {PAYMENT_METHODS.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            aria-pressed={method === m.value}
+            onClick={() => setMethod(m.value)}
+            className={`rounded-lg border px-2 py-3.5 font-condensed text-sm font-semibold tracking-[0.18em] uppercase ${
+              method === m.value
+                ? "border-brand bg-brand-soft text-brand"
+                : "border-line text-white/60 hover:border-white/40"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <PaymentDetails
+        settings={settings}
+        method={method}
+        amount={amount}
+        note={`MMS Jersey ${order.order_id}`}
+      />
+      <div className="mt-5">
+        <ProofPicker file={proof} onChange={setProof} />
+      </div>
+      <label className="mt-3.5 grid gap-2">
+        <span className="font-condensed text-xs tracking-[0.22em] text-ink-2 uppercase">
+          UTR / reference number (optional)
+        </span>
+        <input
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+          inputMode="numeric"
+          maxLength={40}
+          placeholder="12-digit number from the UPI app"
+          className="field-input"
+        />
+      </label>
+      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <PillButton type="button" disabled={!proof || submitting} onClick={() => void submit()}>
+          {submitting ? "Saving…" : "Submit payment"}
+        </PillButton>
+        {onLater && (
+          <button type="button" onClick={onLater} className="pill pill-ghost">
+            Pay later
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The "order placed" card: the child's own jersey on top, then a receipt with the payment state. */
 function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: () => void }) {
   const first = order.player_name.split(" ")[0];
+  const paid = order.payment_status === "submitted" || order.payment_status === "verified";
   return (
     <div>
       <div className="relative grid h-[280px] place-items-center pt-10 bg-[radial-gradient(circle_at_50%_45%,rgba(255,77,18,0.45),#0a0a0a_72%)]">
@@ -376,15 +538,23 @@ function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: ()
         />
       </div>
       <div className="p-6 sm:p-8">
-        <h3 className="h-md">Thank you!</h3>
+        <PaymentState order={order} />
+        <h3 className="h-md mt-5">{paid ? "Thank you!" : `${first}'s order is saved`}</h3>
         <p className="mt-2 text-sm text-ink-2">
-          {first}'s jersey is ordered. The school checks your payment and confirms it.
+          {paid
+            ? `${first}'s jersey is ordered. The school checks your payment and confirms it.`
+            : `Pay ${formatCurrency(Number(order.amount))} to confirm it: open "My orders" to pay by UPI, or pay cash at the school office. The jersey is made only after payment.`}
         </p>
         <dl className="mt-3.5">
-          <ReceiptLine label="Player" value={order.player_name} />
-          <ReceiptLine label="Class" value={order.class_name ?? "—"} />
-          <ReceiptLine label="Size" value={order.jersey_size} />
-          <ReceiptLine label="Paid by" value={paymentMethodLabel(order.payment_method)} />
+          <ReceiptLine label="Student" value={order.player_name} />
+          <ReceiptLine
+            label="Adm. no. · Grade"
+            value={`${order.admission_no ?? "—"} · ${gradeLabel(order.class_name)}`}
+          />
+          <ReceiptLine
+            label="Jersey"
+            value={`No. ${order.jersey_number ?? "—"} · "${order.print_name ?? ""}" · Size ${order.jersey_size}`}
+          />
           <div className="flex items-baseline justify-between py-3 text-sm">
             <dt className="text-ink-2">Amount</dt>
             <dd className="font-display text-2xl text-brand">
@@ -398,12 +568,9 @@ function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: ()
           </span>
           <span className="font-display text-2xl text-brand">{order.order_id}</span>
         </div>
-        <div className="mt-3.5">
-          <Tag tone="warn">● Payment · waiting for check</Tag>
-        </div>
         <div className="mt-5 grid grid-cols-2 gap-2">
           <Link to="/status" className="pill px-3">
-            My orders
+            {paid ? "My orders" : "Pay now"}
           </Link>
           <button type="button" onClick={onRestart} className="pill pill-ghost px-3">
             Another child
@@ -414,8 +581,45 @@ function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: ()
   );
 }
 
-function paymentMethodLabel(method: string | null) {
-  return method === "Bank Transfer" ? "Bank transfer" : (method ?? "—");
+const PAYMENT_STATE_COPY: Record<PaymentStatus, { title: string; text: string; cls: string }> = {
+  pending: {
+    title: "Not paid",
+    text: "Pay to confirm this order.",
+    cls: "border-bad/40 bg-bad-bg text-bad",
+  },
+  rejected: {
+    title: "Not paid",
+    text: "The last payment was not accepted. Please pay again.",
+    cls: "border-bad/40 bg-bad-bg text-bad",
+  },
+  submitted: {
+    title: "Paid · not verified",
+    text: "We have your screenshot. The school will check it and confirm the order.",
+    cls: "border-warn/40 bg-warn-bg text-warn",
+  },
+  verified: {
+    title: "Paid · verified",
+    text: "The school has checked your payment. Your order is confirmed.",
+    cls: "border-ok/40 bg-ok-bg text-ok",
+  },
+};
+
+/** The big payment-state banner parents see after ordering and on "My orders". */
+export function PaymentState({ order }: { order: JerseyOrder }) {
+  const s = PAYMENT_STATE_COPY[order.payment_status] ?? PAYMENT_STATE_COPY.pending;
+  return (
+    <div className={`rounded-xl border px-5 py-4 text-center ${s.cls}`}>
+      <div className="font-condensed text-xs font-semibold tracking-[0.22em] uppercase">
+        Payment
+      </div>
+      <div className="mt-1 font-display text-3xl leading-none uppercase">{s.title}</div>
+      <p className="mt-2 text-[13px] text-white/85">
+        {order.payment_method === "Cash" && order.receipt_no
+          ? `Paid in cash · receipt ${order.receipt_no}.`
+          : s.text}
+      </p>
+    </div>
+  );
 }
 
 function ReceiptLine({ label, value }: { label: string; value: string }) {
@@ -427,94 +631,79 @@ function ReceiptLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function sizeOptions(sizes: string[], playerSize: string | null) {
-  return playerSize && !sizes.includes(playerSize) ? [playerSize, ...sizes] : sizes;
-}
-
 function FindStep({
-  players,
-  selectedId,
+  selected,
   onPick,
   onNext,
 }: {
-  players: PublicPlayer[];
-  selectedId: string | null;
-  onPick: (p: PublicPlayer) => void;
+  selected: StudentMatch | null;
+  onPick: (s: StudentMatch) => void;
   onNext: () => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [cls, setCls] = useState("All");
-  const classes = useMemo(
-    () => [
-      "All",
-      ...Array.from(new Set(players.map((p) => p.class_name).filter(Boolean) as string[])),
-    ],
-    [players],
-  );
-  const q = query.trim().toLowerCase();
-  const list = players.filter(
-    (p) =>
-      (cls === "All" || p.class_name === cls) &&
-      (!q || p.full_name.toLowerCase().includes(q) || String(p.jersey_number ?? "") === q),
-  );
+  const [query, setQuery] = useState(selected?.full_name ?? "");
+  const [matches, setMatches] = useState<StudentMatch[] | null>(selected ? [selected] : null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const q = query.trim();
+
+  useEffect(() => {
+    if (q.length < SEARCH_MIN) {
+      setMatches(null);
+      return;
+    }
+    let live = true;
+    const timer = window.setTimeout(async () => {
+      const { data, error } = await supabase.rpc("jersey_search_players", { p_query: q });
+      if (!live) return;
+      setSearchError(error ? error.message : null);
+      setMatches(data ?? []);
+    }, 250);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [q]);
 
   return (
     <div>
       <p className="-mt-2 mb-5 text-sm text-ink-2">
-        Search by name. The school has already added every player.
+        Type at least {SEARCH_MIN} letters of your child's name, or the admission number.
       </p>
       <label className="relative block">
-        <span className="sr-only">Child's name</span>
+        <span className="sr-only">Child's name or admission number</span>
         <Search className="absolute top-1/2 left-[17px] size-[18px] -translate-y-1/2 text-ink-2" />
         <input
+          id="student-search"
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Type your child's name"
+          placeholder="Child's name or admission no."
           autoComplete="off"
           className="w-full rounded-lg border border-line bg-ink py-3.5 pr-4 pl-[46px] text-[15px] placeholder:text-white/30 focus:border-brand focus:outline-none"
         />
       </label>
-      {classes.length > 2 && (
-        <div className="my-3.5 flex flex-wrap gap-1.5">
-          {classes.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-pressed={cls === c}
-              onClick={() => setCls(c)}
-              className={`rounded-md border px-3 py-1.5 font-condensed text-[13px] font-semibold tracking-[0.12em] uppercase ${
-                cls === c ? "border-brand bg-brand-soft text-brand" : "border-line text-ink-2"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="mt-3.5 grid max-h-[380px] gap-1.5 overflow-auto">
-        {players.length === 0 ? (
+      <div className="mt-3.5 grid gap-1.5">
+        {searchError ? (
+          <p className="text-sm text-bad">The search didn't work: {searchError}</p>
+        ) : matches === null ? (
+          <p className="text-sm text-ink-3">Matching students show here.</p>
+        ) : matches.length === 0 ? (
           <p className="text-sm text-ink-3">
-            The player list is not ready yet. Please check back soon.
-          </p>
-        ) : list.length === 0 ? (
-          <p className="text-sm text-ink-3">
-            No player found. Check the spelling, or contact the school office.
+            No student found. Check the spelling, or contact the school office.
           </p>
         ) : (
-          list.map((p) => {
+          matches.map((p) => {
             const tag = ORDER_STATE_TAGS[p.order_state];
             const blocked = p.order_state === "submitted" || p.order_state === "verified";
-            const selected = p.id === selectedId;
+            const isSelected = p.id === selected?.id;
             return (
               <button
                 key={p.id}
                 type="button"
                 disabled={blocked}
-                aria-pressed={selected}
+                aria-pressed={isSelected}
                 onClick={() => onPick(p)}
                 className={`grid w-full grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50 ${
-                  selected
+                  isSelected
                     ? "border-brand bg-brand-soft"
                     : "border-line bg-ink hover:enabled:border-white/40"
                 }`}
@@ -524,20 +713,19 @@ function FindStep({
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate font-bold">{p.full_name}</span>
-                  <span className="text-[12.5px] text-ink-3">
-                    {[
-                      p.class_name,
-                      p.jersey_number != null ? `No. ${p.jersey_number}` : null,
-                      p.jersey_size ? `Size ${p.jersey_size}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                  <span className="flex flex-wrap gap-x-2 text-[12.5px] text-ink-3">
+                    {p.admission_no && (
+                      <span className="font-condensed font-bold tracking-wide text-white">
+                        Adm. {p.admission_no}
+                      </span>
+                    )}
+                    <span>{gradeLabel(p.class_name)}</span>
                   </span>
                 </span>
-                {tag ? (
-                  <Tag tone={tag.tone}>{tag.label}</Tag>
-                ) : selected ? (
+                {isSelected ? (
                   <Tag tone="brand">Selected</Tag>
+                ) : tag ? (
+                  <Tag tone={tag.tone}>{tag.label}</Tag>
                 ) : (
                   <Tag>Select</Tag>
                 )}
@@ -546,8 +734,14 @@ function FindStep({
           })
         )}
       </div>
+      {selected && (selected.order_state === "pending" || selected.order_state === "rejected") && (
+        <p className="mt-3 rounded-lg border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn">
+          {selected.full_name} already has an unpaid order. Continuing updates that order and takes
+          you to payment.
+        </p>
+      )}
       <Actions>
-        <PillButton type="button" disabled={!selectedId} onClick={onNext}>
+        <PillButton type="button" disabled={!selected} onClick={onNext}>
           Continue
         </PillButton>
       </Actions>

@@ -44,14 +44,15 @@ export function formatCurrency(value: number) {
 }
 
 export function buildUpiUri(settings: JerseySettings, amount: number, note?: string) {
-  const params = new URLSearchParams({
-    pa: settings.upi_id,
-    pn: settings.payee_name,
-    am: String(amount),
-    cu: "INR",
-  });
-  if (note) params.set("tn", note);
-  return `upi://pay?${params.toString()}`;
+  // Spaces must be %20: some UPI apps show a "+" from URLSearchParams in the payee name.
+  const params: [string, string][] = [
+    ["pa", settings.upi_id],
+    ["pn", settings.payee_name],
+    ["am", String(amount)],
+    ["cu", "INR"],
+  ];
+  if (note) params.push(["tn", note]);
+  return `upi://pay?${params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&")}`;
 }
 
 export function buildQrUrl(settings: JerseySettings, amount: number, note?: string) {
@@ -60,6 +61,15 @@ export function buildQrUrl(settings: JerseySettings, amount: number, note?: stri
 
 export function printName(player: { print_name: string | null; full_name: string }) {
   return (player.print_name || player.full_name.split(" ")[0] || player.full_name).toUpperCase();
+}
+
+/** "GRADE_VI-A" → "Grade VI-A", "PREKG-A" → "Pre-KG-A". Other classes stay as they are. */
+export function gradeLabel(cls: string | null) {
+  if (!cls) return "—";
+  return cls
+    .replace(/^GRADE[_\s]*/i, "Grade ")
+    .replace(/^PRE-?KG/i, "Pre-KG")
+    .trim();
 }
 
 export function initials(name: string) {
@@ -74,10 +84,10 @@ export function initials(name: string) {
 
 export const ORDER_STATE_TAGS: Record<OrderState, { label: string; tone: Tone } | null> = {
   none: null,
-  pending: { label: "Awaiting payment", tone: "warn" },
-  submitted: { label: "Ordered · checking", tone: "warn" },
-  verified: { label: "Ordered · paid", tone: "ok" },
-  rejected: { label: "Rejected · redo", tone: "bad" },
+  pending: { label: "Ordered · not paid", tone: "bad" },
+  submitted: { label: "Ordered", tone: "ok" },
+  verified: { label: "Ordered", tone: "ok" },
+  rejected: { label: "Ordered · not paid", tone: "bad" },
 };
 
 export function paymentLabel(status: string) {
@@ -85,8 +95,8 @@ export function paymentLabel(status: string) {
 }
 
 export const PAYMENT_LABELS: Record<PaymentStatus, { label: string; tone: Tone }> = {
-  pending: { label: "Not paid", tone: "plain" },
-  submitted: { label: "Needs check", tone: "warn" },
+  pending: { label: "Not paid", tone: "bad" },
+  submitted: { label: "Paid · not verified", tone: "warn" },
   verified: { label: "Paid · verified", tone: "ok" },
   rejected: { label: "Rejected", tone: "bad" },
 };
