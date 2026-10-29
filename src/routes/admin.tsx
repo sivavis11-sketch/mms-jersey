@@ -9,6 +9,8 @@ import {
   LogOut,
   Pencil,
   Plus,
+  Receipt,
+  Share2,
   RefreshCw,
   RotateCcw,
   Search,
@@ -20,6 +22,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import { Logo, Tag } from "@/components/brand";
+import { downloadReceipt, shareReceipt } from "@/components/cash-receipt";
 import { supabase } from "@/integrations/supabase/client";
 import type { AdminPlayer, JerseyOrder, JerseySettings } from "@/integrations/supabase/types";
 import {
@@ -42,7 +45,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type Tab = "orders" | "players" | "settings";
+type Tab = "orders" | "receipts" | "players" | "settings";
 
 function AdminPage() {
   const [ready, setReady] = useState(false);
@@ -160,6 +163,7 @@ function AdminPage() {
             {(
               [
                 ["orders", `Orders (${orders.length})`],
+                ["receipts", `Cash receipts (${orders.filter(isCashReceipt).length})`],
                 ["players", `Players & sizes (${players.length})`],
                 ["settings", "Settings"],
               ] as const
@@ -197,6 +201,7 @@ function AdminPage() {
           {tab === "orders" && (
             <OrdersTab
               orders={orders}
+              season={settings?.season_label ?? ""}
               onChanged={(o) => {
                 setOrders((rows) => rows.map((r) => (r.id === o.id ? o : r)));
                 void supabase
@@ -211,6 +216,9 @@ function AdminPage() {
               }}
               notify={notify}
             />
+          )}
+          {tab === "receipts" && (
+            <ReceiptsTab orders={orders} season={settings?.season_label ?? ""} notify={notify} />
           )}
           {tab === "players" && settings && (
             <PlayersTab players={players} settings={settings} reload={loadAll} notify={notify} />
@@ -337,11 +345,13 @@ const PAYMENT_FILTERS = [
 
 function OrdersTab({
   orders,
+  season,
   onChanged,
   onDeleted,
   notify,
 }: {
   orders: JerseyOrder[];
+  season: string;
   onChanged: (o: JerseyOrder) => void;
   onDeleted: (id: number) => void;
   notify: (text: string, bad?: boolean) => void;
@@ -450,6 +460,7 @@ function OrdersTab({
       {selected && (
         <OrderDrawer
           order={selected}
+          season={season}
           onClose={() => setSelectedId(null)}
           onChanged={onChanged}
           onDeleted={(id) => {
@@ -465,12 +476,14 @@ function OrdersTab({
 
 function OrderDrawer({
   order,
+  season,
   onClose,
   onChanged,
   onDeleted,
   notify,
 }: {
   order: JerseyOrder;
+  season: string;
   onClose: () => void;
   onChanged: (o: JerseyOrder) => void;
   onDeleted: (id: number) => void;
@@ -481,6 +494,7 @@ function OrderDrawer({
   const [reason, setReason] = useState("");
   const [cashAmount, setCashAmount] = useState(String(Number(order.amount)));
   const [cashNote, setCashNote] = useState("");
+  const [cashFrom, setCashFrom] = useState("");
   const [notes, setNotes] = useState(order.admin_notes ?? "");
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -607,7 +621,9 @@ function OrderDrawer({
           </dl>
 
           <div className="mt-5">
-            {order.payment_proof ? (
+            {isCashReceipt(order) ? (
+              <ReceiptActions order={order} season={season} notify={notify} />
+            ) : order.payment_proof ? (
               proofUrl ? (
                 <div className="rounded-lg bg-paper p-3">
                   {order.payment_proof.toLowerCase().endsWith(".pdf") ? (
@@ -755,6 +771,8 @@ function OrderDrawer({
               setAmount={setCashAmount}
               note={cashNote}
               setNote={setCashNote}
+              from={cashFrom}
+              setFrom={setCashFrom}
               saving={saving}
               onSave={() =>
                 void run(
@@ -763,8 +781,9 @@ function OrderDrawer({
                       p_player_id: order.player_id!,
                       p_received_amount: Number(cashAmount),
                       p_note: cashNote.trim() || undefined,
+                      p_received_from: cashFrom.trim() || undefined,
                     }),
-                  `Cash recorded for ${order.order_id}. Order confirmed.`,
+                  `Cash recorded for ${order.order_id}. Order confirmed and receipt created.`,
                 )
               }
             />
@@ -893,6 +912,8 @@ function CashForm({
   setAmount,
   note,
   setNote,
+  from,
+  setFrom,
   saving,
   onSave,
   children,
@@ -901,6 +922,8 @@ function CashForm({
   setAmount: (v: string) => void;
   note: string;
   setNote: (v: string) => void;
+  from: string;
+  setFrom: (v: string) => void;
   saving: boolean;
   onSave: () => void;
   children?: ReactNode;
@@ -917,12 +940,21 @@ function CashForm({
           className="field-input"
         />
       </Field>
-      <Field label="Receipt no. / note (optional)">
+      <Field label="Received from (optional)">
+        <input
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          placeholder="e.g. Mr. Krishnan (father)"
+          maxLength={60}
+          className="field-input"
+        />
+      </Field>
+      <Field label="Note (optional)">
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="e.g. Receipt 042, paid at the office"
-          className="field-input"
+          placeholder="e.g. Paid at the school office"
+          className="field-input sm:col-span-2"
         />
       </Field>
       {children}
@@ -932,9 +964,160 @@ function CashForm({
         onClick={onSave}
         className="pill pill-dark pill-sm justify-self-start sm:col-span-2"
       >
-        {saving ? "Saving…" : "Save cash payment (marks verified)"}
+        {saving ? "Saving…" : "Save cash & create receipt"}
       </button>
     </div>
+  );
+}
+
+function isCashReceipt(o: JerseyOrder) {
+  return o.payment_method === "Cash" && o.payment_status === "verified" && !!o.receipt_no;
+}
+
+function ReceiptActions({
+  order,
+  season,
+  notify,
+}: {
+  order: JerseyOrder;
+  season: string;
+  notify: (text: string, bad?: boolean) => void;
+}) {
+  const [busy, setBusy] = useState<"pdf" | "share" | null>(null);
+  async function act(kind: "pdf" | "share") {
+    setBusy(kind);
+    try {
+      await (kind === "pdf" ? downloadReceipt(order, season) : shareReceipt(order, season));
+    } catch {
+      notify("Could not make the receipt PDF. Please try again.", true);
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <div className="rounded-lg bg-paper p-4">
+      <div className="label text-ink-2">Cash receipt</div>
+      <div className="font-display mt-1 text-2xl tracking-wide text-brand">{order.receipt_no}</div>
+      {order.received_from && (
+        <p className="m-0 mt-1 text-sm text-ink-2">Received from {order.received_from}</p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={!!busy}
+          onClick={() => void act("pdf")}
+          className="pill pill-sm"
+        >
+          <Download className="size-3.5" /> {busy === "pdf" ? "Making PDF…" : "Download PDF"}
+        </button>
+        <button
+          type="button"
+          disabled={!!busy}
+          onClick={() => void act("share")}
+          className="pill pill-ghost pill-sm"
+        >
+          <Share2 className="size-3.5" /> {busy === "share" ? "Preparing…" : "Share on WhatsApp"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReceiptsTab({
+  orders,
+  season,
+  notify,
+}: {
+  orders: JerseyOrder[];
+  season: string;
+  notify: (text: string, bad?: boolean) => void;
+}) {
+  const receipts = orders
+    .filter(isCashReceipt)
+    .sort((a, b) => (b.receipt_no ?? "").localeCompare(a.receipt_no ?? ""));
+  const total = receipts.reduce((s, o) => s + Number(o.payment_received_amount ?? o.amount), 0);
+  const [busy, setBusy] = useState<string | null>(null);
+  async function act(o: JerseyOrder, kind: "pdf" | "share") {
+    setBusy(`${o.id}${kind}`);
+    try {
+      await (kind === "pdf" ? downloadReceipt(o, season) : shareReceipt(o, season));
+    } catch {
+      notify("Could not make the receipt PDF. Please try again.", true);
+    } finally {
+      setBusy(null);
+    }
+  }
+  if (receipts.length === 0)
+    return (
+      <div className="card p-10 text-center text-ink-2">
+        <Receipt className="mx-auto mb-3 size-8 text-brand" />
+        No cash receipts yet. Use "Record cash" on an order or a player and the receipt appears
+        here.
+      </div>
+    );
+  return (
+    <>
+      <p className="mb-3 text-sm text-ink-2">
+        {receipts.length} receipt{receipts.length === 1 ? "" : "s"} · {formatCurrency(total)}{" "}
+        received in cash
+      </p>
+      <TableWrap>
+        <thead>
+          <tr>
+            <Th>Receipt</Th>
+            <Th>Player</Th>
+            <Th>Received from</Th>
+            <Th>Date</Th>
+            <Th>Amount</Th>
+            <Th>{""}</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {receipts.map((o) => (
+            <tr key={o.id} className="border-t border-line">
+              <Td className="font-display tracking-wide text-brand">{o.receipt_no}</Td>
+              <Td>
+                {o.player_name}
+                <div className="text-xs text-ink-3">
+                  {o.class_name ?? "—"} · {o.order_id}
+                </div>
+              </Td>
+              <Td>{o.received_from ?? "—"}</Td>
+              <Td className="tabular-nums">
+                {new Date(o.payment_verified_at ?? o.created_at).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                })}
+              </Td>
+              <Td className="tabular-nums">
+                {formatCurrency(Number(o.payment_received_amount ?? o.amount))}
+              </Td>
+              <Td>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => void act(o, "pdf")}
+                    className="pill pill-sm"
+                  >
+                    <Download className="size-3.5" /> {busy === `${o.id}pdf` ? "…" : "PDF"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => void act(o, "share")}
+                    aria-label={`Share receipt ${o.receipt_no} on WhatsApp`}
+                    className="pill pill-ghost pill-sm"
+                  >
+                    <Share2 className="size-3.5" /> {busy === `${o.id}share` ? "…" : "WhatsApp"}
+                  </button>
+                </div>
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </TableWrap>
+    </>
   );
 }
 
@@ -1302,7 +1485,9 @@ function PlayersTab({
           settings={settings}
           onClose={() => setCashFor(null)}
           onSaved={async (orderId) => {
-            notify(`Cash recorded for ${cashFor.full_name} (${orderId}). Order confirmed.`);
+            notify(
+              `Cash recorded for ${cashFor.full_name} (${orderId}). Order confirmed and receipt created.`,
+            );
             setCashFor(null);
             await reload();
           }}
@@ -1328,8 +1513,30 @@ function CashModal({
 }) {
   const [amount, setAmount] = useState(String(Number(settings.unit_price)));
   const [note, setNote] = useState("");
+  const [from, setFrom] = useState("");
   const [size, setSize] = useState(player.jersey_size ?? "");
   const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState<JerseyOrder | null>(null);
+  if (done)
+    return (
+      <Modal title="Receipt ready" onClose={() => void onSaved(done.order_id)}>
+        <div className="flex items-center gap-3 rounded-lg bg-ok-bg px-4 py-3 text-sm text-ok">
+          <CheckCircle2 className="size-5 shrink-0" />
+          <span>
+            Cash recorded for {done.player_name}. Order confirmed. Receipt{" "}
+            <b className="font-display tracking-wide text-brand">{done.receipt_no}</b> created.
+          </span>
+        </div>
+        <ReceiptActions order={done} season={settings.season_label} notify={notify} />
+        <button
+          type="button"
+          onClick={() => void onSaved(done.order_id)}
+          className="pill pill-ghost pill-sm justify-self-start"
+        >
+          Done
+        </button>
+      </Modal>
+    );
   return (
     <Modal title={`Record cash · ${player.full_name}`} onClose={onClose}>
       <p className="m-0 text-sm text-ink-2">
@@ -1342,6 +1549,8 @@ function CashModal({
         setAmount={setAmount}
         note={note}
         setNote={setNote}
+        from={from}
+        setFrom={setFrom}
         saving={saving}
         onSave={async () => {
           setSaving(true);
@@ -1350,11 +1559,12 @@ function CashModal({
             p_received_amount: Number(amount),
             p_jersey_size: size || undefined,
             p_note: note.trim() || undefined,
+            p_received_from: from.trim() || undefined,
           });
           setSaving(false);
           if (error || !data)
             return notify(error?.message ?? "Could not record the cash payment.", true);
-          await onSaved(data.order_id);
+          setDone(data);
         }}
       >
         <Field label="Size">

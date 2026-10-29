@@ -86,8 +86,14 @@ CREATE TABLE IF NOT EXISTS jersey.orders (
   payment_rejection_reason TEXT,
   order_status TEXT NOT NULL DEFAULT 'payment_submitted'
     CHECK (order_status IN ('new','payment_submitted','confirmed','in_production','ready','delivered','cancelled')),
-  admin_notes TEXT
+  admin_notes TEXT,
+  -- Cash payments get a numbered receipt (MMS-CR-0001, …) that is never reused.
+  receipt_no TEXT UNIQUE,
+  received_from TEXT
 );
+ALTER TABLE jersey.orders ADD COLUMN IF NOT EXISTS receipt_no TEXT UNIQUE;
+ALTER TABLE jersey.orders ADD COLUMN IF NOT EXISTS received_from TEXT;
+CREATE SEQUENCE IF NOT EXISTS jersey.receipt_seq START 1;
 CREATE INDEX IF NOT EXISTS orders_created_idx ON jersey.orders (created_at DESC);
 -- One live order per player. A cancelled order frees the player to order again.
 CREATE UNIQUE INDEX IF NOT EXISTS orders_one_live_per_player
@@ -442,9 +448,12 @@ BEGIN
 END;
 $$;
 
--- Cash paid at the school office. Creates the order if the parent never placed one.
+-- Cash paid at the school office. Creates the order if the parent never placed one,
+-- and gives the payment a numbered receipt.
+DROP FUNCTION IF EXISTS public.jersey_admin_record_cash(UUID, NUMERIC, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.jersey_admin_record_cash(
-  p_player_id UUID, p_received_amount NUMERIC, p_jersey_size TEXT DEFAULT NULL, p_note TEXT DEFAULT NULL
+  p_player_id UUID, p_received_amount NUMERIC, p_jersey_size TEXT DEFAULT NULL, p_note TEXT DEFAULT NULL,
+  p_received_from TEXT DEFAULT NULL
 )
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
@@ -478,6 +487,8 @@ BEGIN
       payment_verified_at = now(),
       payment_verified_by = auth.jwt()->>'email',
       payment_rejection_reason = NULL,
+      receipt_no = coalesce(receipt_no, 'MMS-CR-' || lpad(nextval('jersey.receipt_seq')::TEXT, 4, '0')),
+      received_from = nullif(trim(coalesce(p_received_from, '')), ''),
       order_status = CASE WHEN order_status IN ('new','payment_submitted') THEN 'confirmed' ELSE order_status END
     WHERE id = existing.id
     RETURNING * INTO result;
@@ -485,13 +496,15 @@ BEGIN
     INSERT INTO jersey.orders (
       order_id, access_token, player_id, player_name, class_name, jersey_number, print_name,
       jersey_size, amount, payment_status, payment_method, payment_reference,
-      payment_received_amount, payment_verified_at, payment_verified_by, order_status
+      payment_received_amount, payment_verified_at, payment_verified_by, order_status,
+      receipt_no, received_from
     ) VALUES (
       'MMS-' || to_char(now(), 'YY') || '-' || nextval('jersey.order_seq'),
       encode(extensions.gen_random_bytes(24), 'hex'),
       pl.id, pl.full_name, pl.class_name, pl.jersey_number, pl.print_name,
       coalesce(nullif(trim(p_jersey_size), ''), pl.jersey_size, '—'), cfg.unit_price, 'verified', 'Cash',
-      nullif(trim(coalesce(p_note, '')), ''), p_received_amount, now(), auth.jwt()->>'email', 'confirmed'
+      nullif(trim(coalesce(p_note, '')), ''), p_received_amount, now(), auth.jwt()->>'email', 'confirmed',
+      'MMS-CR-' || lpad(nextval('jersey.receipt_seq')::TEXT, 4, '0'), nullif(trim(coalesce(p_received_from, '')), '')
     )
     RETURNING * INTO result;
   END IF;

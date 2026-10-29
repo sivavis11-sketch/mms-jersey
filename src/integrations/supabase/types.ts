@@ -64,6 +64,8 @@ export type JerseyOrder = {
   payment_rejection_reason: string | null;
   order_status: string;
   admin_notes: string | null;
+  receipt_no: string | null;
+  received_from: string | null;
 };
 
 type Fn<Args, Returns> = { Args: Args; Returns: Returns };
@@ -117,6 +119,7 @@ export type Database = {
           p_received_amount: number;
           p_jersey_size?: string | undefined;
           p_note?: string | undefined;
+          p_received_from?: string | undefined;
         },
         JerseyOrder
       >;
