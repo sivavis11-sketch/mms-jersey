@@ -12,6 +12,7 @@ import type {
 } from "@/integrations/supabase/types";
 import {
   MAX_PROOF_BYTES,
+  DEFAULT_JERSEY_IMAGE,
   ORDER_STATE_TAGS,
   PAYMENT_METHODS,
   PROOF_ACCEPT,
@@ -281,11 +282,11 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
         >
           <div className="grid aspect-[5/4] place-items-center overflow-hidden rounded-lg bg-[radial-gradient(circle_at_50%_40%,rgba(255,77,18,0.28),#0a0a0a_70%)]">
             <JerseyArt
-              image={settings.jersey_image_url}
+              image={settings.jersey_image_url || DEFAULT_JERSEY_IMAGE}
               name={print.trim() || "YOUR NAME"}
               number={numberOk ? String(jerseyNumber).padStart(2, "0") : "00"}
               className={
-                settings.jersey_image_url
+                settings.jersey_image_url || DEFAULT_JERSEY_IMAGE
                   ? "size-full object-cover"
                   : "w-[52%] drop-shadow-[0_24px_30px_rgba(0,0,0,0.7)]"
               }

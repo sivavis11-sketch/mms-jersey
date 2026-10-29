@@ -1,5 +1,7 @@
 import type { JerseySettings, OrderState, PaymentStatus } from "@/integrations/supabase/types";
 
+/** Shown when the admin has not uploaded a jersey photo. */
+export const DEFAULT_JERSEY_IMAGE = "/mms-jersey.jpg";
 export const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 export const PROOF_TYPES = [
   "image/jpeg",

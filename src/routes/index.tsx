@@ -6,7 +6,7 @@ import { OrderFlow } from "@/components/order-flow";
 import mmsJersey from "@/assets/mms-jersey.jpg";
 import { supabase } from "@/integrations/supabase/client";
 import type { JerseySettings } from "@/integrations/supabase/types";
-import { formatCurrency } from "@/lib/jersey";
+import { DEFAULT_JERSEY_IMAGE, formatCurrency } from "@/lib/jersey";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -150,9 +150,9 @@ function Landing() {
               <JerseyArt
                 name="MMS"
                 number="10"
-                image={settings?.jersey_image_url}
+                image={settings?.jersey_image_url || DEFAULT_JERSEY_IMAGE}
                 className={
-                  settings?.jersey_image_url
+                  settings?.jersey_image_url || DEFAULT_JERSEY_IMAGE
                     ? "size-full object-cover"
                     : "w-[62%] drop-shadow-[0_24px_30px_rgba(0,0,0,0.7)]"
                 }
