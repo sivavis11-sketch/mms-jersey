@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { JerseyArt, SiteFooter, SiteHeader } from "@/components/brand";
 import { OrderFlow } from "@/components/order-flow";
-import heroPlayer from "@/assets/hero-player.jpg";
+import mmsJersey from "@/assets/mms-jersey.jpg";
 import { supabase } from "@/integrations/supabase/client";
 import type { JerseySettings } from "@/integrations/supabase/types";
 import { formatCurrency } from "@/lib/jersey";
@@ -70,11 +70,11 @@ function Landing() {
       <section className="relative overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={heroPlayer}
+            src={mmsJersey}
             alt=""
-            width={1920}
-            height={1088}
-            className="kenburns h-[74vh] min-h-[520px] w-full object-cover opacity-40 brightness-50 contrast-125 grayscale"
+            width={1312}
+            height={1199}
+            className="kenburns h-[74vh] min-h-[520px] w-full object-cover opacity-60"
           />
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/80 to-ink/60" />
