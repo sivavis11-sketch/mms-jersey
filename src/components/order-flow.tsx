@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Copy, Download, Search, Upload } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { CheckIcon, JerseyArt, PillButton, Tag } from "@/components/brand";
+import { JerseyArt, PillButton, Tag } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   JerseyOrder,
@@ -22,7 +22,6 @@ import {
   formatCurrency,
   gradeLabel,
   initials,
-  printName,
   saveOrder,
   sizeForChest,
   type PaymentMethod,
@@ -38,6 +37,8 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
   const [print, setPrint] = useState("");
   const [size, setSize] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  // True when the parent chose "Order another set" for a child who already has an order.
+  const [newSet, setNewSet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState<PlacedOrder | null>(null);
@@ -65,6 +66,7 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
       setSize(null);
     }
     setStudent(s);
+    setNewSet(false);
     setConfirmed(false);
   }
 
@@ -78,6 +80,7 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
         p_jersey_number: jerseyNumber!,
         p_print_name: print.trim(),
         p_jersey_size: size!,
+        p_new_set: newSet,
       });
       if (rpcError || !data) throw new Error(rpcError?.message ?? "The order could not be saved.");
       saveOrder({ orderId: data.order_id, token: data.access_token, playerName: data.player_name });
@@ -99,6 +102,7 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
     setPrint("");
     setSize(null);
     setConfirmed(false);
+    setNewSet(false);
     setPlaced(null);
   }
 
@@ -164,7 +168,16 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
             </p>
           )}
 
-          {step === 0 && <FindStep selected={student} onPick={pickStudent} onNext={() => go(1)} />}
+          {step === 0 && (
+            <FindStep
+              selected={student}
+              onPick={pickStudent}
+              onNext={(extra) => {
+                setNewSet(extra);
+                go(1);
+              }}
+            />
+          )}
 
           {step === 1 && student && (
             <div>
@@ -175,6 +188,12 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
                 <Fact label="Admission no." value={student.admission_no ?? "—"} />
                 <Fact label="Grade" value={gradeLabel(student.class_name)} />
               </dl>
+              {newSet && (
+                <p className="-mt-2 mb-5 text-sm text-ink-2">
+                  <Tag tone="info">Extra set</Tag> This is a new order, next to{" "}
+                  {student.full_name.split(" ")[0]}'s earlier one.
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                 <label className="grid gap-2">
                   <span className="label text-ink-2">Jersey no.</span>
@@ -235,6 +254,7 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
                   value={`No. ${number} · "${print.trim()}" · Size ${size}`}
                 />
                 <ReceiptLine label="Price" value={formatCurrency(amount)} />
+                {newSet && <ReceiptLine label="Order" value="Extra set (new order)" />}
               </dl>
               <label className="mt-5 flex items-start gap-2.5 rounded-lg border border-brand/30 bg-brand-soft p-4 text-sm">
                 <input
@@ -522,21 +542,35 @@ export function PaymentPanel({
   );
 }
 
-/** The "order placed" card: the child's own jersey on top, then a receipt with the payment state. */
+/**
+ * The "order placed" card: a white top with the child's name and the jersey number, size
+ * and amount (shown only here), then the payment state and the order ID.
+ */
 function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: () => void }) {
   const first = order.player_name.split(" ")[0];
   const paid = order.payment_status === "submitted" || order.payment_status === "verified";
   return (
     <div>
-      <div className="relative grid h-[280px] place-items-center pt-10 bg-[radial-gradient(circle_at_50%_45%,rgba(255,77,18,0.45),#0a0a0a_72%)]">
-        <span className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 font-condensed text-xs font-bold tracking-[0.16em] text-white uppercase">
-          <CheckIcon className="size-3.5" /> Order placed
-        </span>
-        <JerseyArt
-          name={printName({ print_name: order.print_name, full_name: order.player_name })}
-          number={order.jersey_number != null ? String(order.jersey_number).padStart(2, "0") : ""}
-          className="w-[170px] drop-shadow-[0_22px_26px_rgba(0,0,0,0.7)]"
-        />
+      <div className="bg-white px-5 pt-5 pb-5 text-ink sm:px-8 sm:pt-7">
+        <div className="font-condensed text-xs font-bold tracking-[0.3em] text-black/55 uppercase">
+          Order placed for
+        </div>
+        <h3 className="mt-1 font-display text-[clamp(36px,9vw,52px)] leading-none text-brand uppercase">
+          {order.player_name}
+        </h3>
+        {order.print_name && (
+          <div className="mt-1.5 font-condensed text-[13px] font-semibold tracking-[0.14em] text-black/55 uppercase">
+            Name on jersey: {order.print_name}
+          </div>
+        )}
+        <dl className="mt-4 grid grid-cols-3 gap-2">
+          <PlacedBox
+            label="Number"
+            value={order.jersey_number != null ? String(order.jersey_number) : "—"}
+          />
+          <PlacedBox label="Size" value={order.jersey_size} />
+          <PlacedBox label="Amount" value={formatCurrency(Number(order.amount))} />
+        </dl>
       </div>
       <div className="p-6 sm:p-8">
         <PaymentState order={order} />
@@ -547,21 +581,10 @@ function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: ()
             : `Pay ${formatCurrency(Number(order.amount))} to confirm it: open "My orders" to pay by UPI, or pay cash at the school office. The jersey is made only after payment.`}
         </p>
         <dl className="mt-3.5">
-          <ReceiptLine label="Student" value={order.player_name} />
           <ReceiptLine
             label="Adm. no. · Grade"
             value={`${order.admission_no ?? "—"} · ${gradeLabel(order.class_name)}`}
           />
-          <ReceiptLine
-            label="Jersey"
-            value={`No. ${order.jersey_number ?? "—"} · "${order.print_name ?? ""}" · Size ${order.jersey_size}`}
-          />
-          <div className="flex items-baseline justify-between py-3 text-sm">
-            <dt className="text-ink-2">Amount</dt>
-            <dd className="font-display text-2xl text-brand">
-              {formatCurrency(Number(order.amount))}
-            </dd>
-          </div>
         </dl>
         <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-brand/40 bg-ink px-4 py-3">
           <span className="font-condensed text-xs tracking-[0.26em] text-ink-2 uppercase">
@@ -578,6 +601,17 @@ function PlacedReceipt({ order, onRestart }: { order: JerseyOrder; onRestart: ()
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PlacedBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-0.5 rounded-lg border-[1.5px] border-ink px-3 py-2">
+      <dt className="font-condensed text-[10.5px] font-bold tracking-[0.2em] text-black/55 uppercase">
+        {label}
+      </dt>
+      <dd className="font-display text-2xl leading-none">{value}</dd>
     </div>
   );
 }
@@ -639,7 +673,7 @@ function FindStep({
 }: {
   selected: StudentMatch | null;
   onPick: (s: StudentMatch) => void;
-  onNext: () => void;
+  onNext: (newSet: boolean) => void;
 }) {
   const [query, setQuery] = useState(selected?.full_name ?? "");
   const [matches, setMatches] = useState<StudentMatch[] | null>(selected ? [selected] : null);
@@ -694,13 +728,11 @@ function FindStep({
         ) : (
           matches.map((p) => {
             const tag = ORDER_STATE_TAGS[p.order_state];
-            const blocked = p.order_state === "submitted" || p.order_state === "verified";
             const isSelected = p.id === selected?.id;
             return (
               <button
                 key={p.id}
                 type="button"
-                disabled={blocked}
                 aria-pressed={isSelected}
                 onClick={() => onPick(p)}
                 className={`grid w-full grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -725,6 +757,8 @@ function FindStep({
                 </span>
                 {isSelected ? (
                   <Tag tone="brand">Selected</Tag>
+                ) : p.order_count > 1 ? (
+                  <Tag tone="ok">{p.order_count} orders</Tag>
                 ) : tag ? (
                   <Tag tone={tag.tone}>{tag.label}</Tag>
                 ) : (
@@ -735,17 +769,63 @@ function FindStep({
           })
         )}
       </div>
-      {selected && (selected.order_state === "pending" || selected.order_state === "rejected") && (
-        <p className="mt-3 rounded-lg border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn">
-          {selected.full_name} already has an unpaid order. Continuing updates that order and takes
-          you to payment.
-        </p>
+      {selected && selected.order_count > 0 ? (
+        <AlreadyOrdered student={selected} onNext={onNext} />
+      ) : (
+        <Actions>
+          <PillButton type="button" disabled={!selected} onClick={() => onNext(false)}>
+            Continue
+          </PillButton>
+        </Actions>
       )}
-      <Actions>
-        <PillButton type="button" disabled={!selected} onClick={onNext}>
-          Continue
-        </PillButton>
-      </Actions>
+    </div>
+  );
+}
+
+/** Shown when the chosen child already has an order: change the unpaid one, or order another set. */
+function AlreadyOrdered({
+  student,
+  onNext,
+}: {
+  student: StudentMatch;
+  onNext: (newSet: boolean) => void;
+}) {
+  const first = student.full_name.split(" ")[0];
+  const unpaid = student.order_state === "pending" || student.order_state === "rejected";
+  const last = [
+    student.last_order_id,
+    student.last_jersey_number != null ? `No. ${student.last_jersey_number}` : null,
+    student.last_jersey_size ? `size ${student.last_jersey_size}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <div className="mt-4 grid gap-3">
+      <div className="rounded-lg border border-[#7cc4ff]/40 bg-[#10202e] px-4 py-3 text-sm">
+        <div className="label text-[#7cc4ff]">Already ordered</div>
+        <p className="mt-1.5">
+          {first} already has{" "}
+          {student.order_count === 1 ? "1 jersey order" : `${student.order_count} jersey orders`}
+          {last && ` (${student.order_count > 1 ? "latest: " : ""}${last})`}.{" "}
+          {unpaid
+            ? "The latest one is not paid yet. Change it, or order another set?"
+            : "Do you want to order another set?"}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => onNext(true)} className="pill px-3">
+          Order another set
+        </button>
+        {unpaid ? (
+          <button type="button" onClick={() => onNext(false)} className="pill pill-ghost px-3">
+            Change unpaid order
+          </button>
+        ) : (
+          <Link to="/status" className="pill pill-ghost px-3">
+            See my orders
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

@@ -45,11 +45,29 @@ export const Route = createFileRoute("/admin")({
 });
 
 type Tab = "orders" | "receipts" | "players" | "settings";
+type PlayerFilter = "all" | "football" | "football-none" | "new";
+
+/** Tags that say who an order is for: a football player, a new player, and which set it is. */
+function teamTags(o: JerseyOrder) {
+  if (o.order_status === "cancelled" || !o.player_id) return [];
+  const tags: { label: string; tone: "team" | "info" | "dark" }[] = [];
+  tags.push(
+    o.is_football ? { label: "Football", tone: "team" } : { label: "New player", tone: "info" },
+  );
+  if ((o.set_no ?? 1) > 1) tags.push({ label: `Extra set · ${ordinal(o.set_no!)}`, tone: "dark" });
+  return tags;
+}
+
+function ordinal(n: number) {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th");
+  return `${n}${s}`;
+}
 
 function AdminPage() {
   const [ready, setReady] = useState(false);
   const [admin, setAdmin] = useState(false);
   const [tab, setTab] = useState<Tab>("orders");
+  const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
   const [orders, setOrders] = useState<JerseyOrder[]>([]);
   const [players, setPlayers] = useState<AdminPlayer[]>([]);
   const [settings, setSettings] = useState<JerseySettings | null>(null);
@@ -115,6 +133,17 @@ function AdminPage() {
     notOrdered: players.filter((p) => p.is_active && p.order_state === "none").length,
     collected: verified.reduce((sum, o) => sum + Number(o.payment_received_amount ?? o.amount), 0),
   };
+  const team = players.filter((p) => p.is_football);
+  const teamStats = {
+    total: team.length,
+    ordered: team.filter((p) => p.order_count > 0).length,
+    newPlayers: players.filter((p) => !p.is_football && p.order_count > 0).length,
+    extraSets: live.filter((o) => (o.set_no ?? 1) > 1).length,
+  };
+  function showPlayers(filter: PlayerFilter) {
+    setPlayerFilter(filter);
+    setTab("players");
+  }
 
   return (
     <Shell>
@@ -160,6 +189,55 @@ function AdminPage() {
             <StatCard tone="light" label="Not ordered yet" value={String(stats.notOrdered)} />
             <StatCard tone="light" label="Collected" value={formatCurrency(stats.collected)} />
           </div>
+          <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <button
+              type="button"
+              onClick={() => showPlayers("football")}
+              className="flex min-h-[104px] flex-col justify-between gap-3 rounded-xl border border-line bg-panel p-5 text-left hover:border-white/40"
+            >
+              <span className="label text-ink-2">Football ordered</span>
+              <b className="font-display text-[clamp(28px,3.4vw,40px)] leading-[0.9] font-normal tabular-nums">
+                {teamStats.ordered} / {teamStats.total}
+              </b>
+              <span className="block h-1.5 overflow-hidden rounded-full bg-line">
+                <span
+                  className="block h-full bg-white"
+                  style={{
+                    width: `${teamStats.total ? (teamStats.ordered / teamStats.total) * 100 : 0}%`,
+                  }}
+                />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => showPlayers("football-none")}
+              className="flex min-h-[104px] flex-col justify-between gap-3 rounded-xl border border-brand bg-brand p-5 text-left text-white hover:bg-brand-deep"
+            >
+              <span className="label">Football not ordered</span>
+              <b className="font-display text-[clamp(28px,3.4vw,40px)] leading-[0.9] font-normal tabular-nums">
+                {teamStats.total - teamStats.ordered}
+              </b>
+              <span className="text-xs text-white/85">Tap to see the names</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => showPlayers("new")}
+              className="flex min-h-[104px] flex-col justify-between gap-3 rounded-xl border border-[#7cc4ff]/45 bg-panel p-5 text-left hover:border-[#7cc4ff]"
+            >
+              <span className="label text-ink-2">New players</span>
+              <b className="font-display text-[clamp(28px,3.4vw,40px)] leading-[0.9] font-normal text-[#7cc4ff] tabular-nums">
+                {teamStats.newPlayers}
+              </b>
+              <span className="text-xs text-ink-3">Ordered, not on the football list</span>
+            </button>
+            <div className="flex min-h-[104px] flex-col justify-between gap-3 rounded-xl border border-line bg-panel p-5">
+              <span className="label text-ink-2">Extra sets</span>
+              <b className="font-display text-[clamp(28px,3.4vw,40px)] leading-[0.9] font-normal tabular-nums">
+                {teamStats.extraSets}
+              </b>
+              <span className="text-xs text-ink-3">Second or later order for a child</span>
+            </div>
+          </div>
 
           <div className="mb-4 inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-line bg-panel p-1">
             {(
@@ -174,7 +252,10 @@ function AdminPage() {
                 key={key}
                 type="button"
                 aria-pressed={tab === key}
-                onClick={() => setTab(key)}
+                onClick={() => {
+                  if (key === "players") setPlayerFilter("all");
+                  setTab(key);
+                }}
                 className={`rounded-md px-4 py-2 font-condensed font-semibold tracking-[0.16em] text-xs whitespace-nowrap uppercase ${
                   tab === key ? "bg-brand text-white" : "text-ink-2 hover:text-white"
                 }`}
@@ -205,7 +286,8 @@ function AdminPage() {
               orders={orders}
               season={settings?.season_label ?? ""}
               onChanged={(o) => {
-                setOrders((rows) => rows.map((r) => (r.id === o.id ? o : r)));
+                // Keep the list-only fields (football tag, set number) the update doesn't return.
+                setOrders((rows) => rows.map((r) => (r.id === o.id ? { ...r, ...o } : r)));
                 void supabase
                   .rpc("jersey_admin_list_players")
                   .then(({ data }) => data && setPlayers(data));
@@ -223,7 +305,14 @@ function AdminPage() {
             <ReceiptsTab orders={orders} season={settings?.season_label ?? ""} notify={notify} />
           )}
           {tab === "players" && settings && (
-            <PlayersTab players={players} settings={settings} reload={loadAll} notify={notify} />
+            <PlayersTab
+              players={players}
+              settings={settings}
+              filter={playerFilter}
+              onFilter={setPlayerFilter}
+              reload={loadAll}
+              notify={notify}
+            />
           )}
           {tab === "settings" && settings && (
             <SettingsTab settings={settings} onSaved={setSettings} notify={notify} />
@@ -343,11 +432,15 @@ const PAYMENT_FILTERS = [
   ["verified", "Verified"],
   ["cash", "Cash"],
   ["rejected", "Rejected"],
+  ["new-player", "New players"],
+  ["extra", "Extra sets"],
 ] as const;
 
 function matchesPayment(o: JerseyOrder, filter: string) {
   if (filter === "all") return true;
   if (filter === "cash") return o.payment_method === "Cash" && o.payment_status === "verified";
+  if (filter === "new-player") return !!o.player_id && !o.is_football;
+  if (filter === "extra") return (o.set_no ?? 1) > 1;
   return o.payment_status === filter;
 }
 
@@ -454,6 +547,13 @@ function OrdersTab({
                       {[o.admission_no ? `Adm. ${o.admission_no}` : null, gradeLabel(o.class_name)]
                         .filter(Boolean)
                         .join(" · ")}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {teamTags(o).map((t) => (
+                        <Tag key={t.label} tone={t.tone}>
+                          {t.label}
+                        </Tag>
+                      ))}
                     </div>
                   </Td>
                   <Td>
@@ -1164,6 +1264,7 @@ type PlayerDraft = {
   chest_in: string;
   jersey_size: string;
   is_active: boolean;
+  is_football: boolean;
 };
 const emptyDraft: PlayerDraft = {
   admission_no: "",
@@ -1174,16 +1275,28 @@ const emptyDraft: PlayerDraft = {
   chest_in: "",
   jersey_size: "",
   is_active: true,
+  is_football: false,
 };
+
+const PLAYER_FILTERS: [PlayerFilter, string, (p: AdminPlayer) => boolean][] = [
+  ["all", "All students", () => true],
+  ["football", "Football", (p) => p.is_football],
+  ["football-none", "Football · not ordered", (p) => p.is_football && p.order_count === 0],
+  ["new", "New players", (p) => !p.is_football && p.order_count > 0],
+];
 
 function PlayersTab({
   players,
   settings,
+  filter,
+  onFilter,
   reload,
   notify,
 }: {
   players: AdminPlayer[];
   settings: JerseySettings;
+  filter: PlayerFilter;
+  onFilter: (f: PlayerFilter) => void;
   reload: () => Promise<void>;
   notify: (text: string, bad?: boolean) => void;
 }) {
@@ -1191,17 +1304,20 @@ function PlayersTab({
   const [draft, setDraft] = useState<PlayerDraft | null>(null);
   const [cashFor, setCashFor] = useState<AdminPlayer | null>(null);
   const [paste, setPaste] = useState("");
+  const [allFootball, setAllFootball] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const q = search.trim().toLowerCase();
+  const inFilter = PLAYER_FILTERS.find(([key]) => key === filter)?.[2] ?? (() => true);
   const filtered = players.filter(
     (p) =>
-      !q ||
-      [p.full_name, p.admission_no, p.class_name, p.order_id].some((v) =>
-        String(v ?? "")
-          .toLowerCase()
-          .includes(q),
-      ),
+      inFilter(p) &&
+      (!q ||
+        [p.full_name, p.admission_no, p.class_name, p.order_id].some((v) =>
+          String(v ?? "")
+            .toLowerCase()
+            .includes(q),
+        )),
   );
 
   async function savePlayer() {
@@ -1221,6 +1337,7 @@ function PlayersTab({
       p_print_name: draft.print_name,
       p_jersey_size: draft.jersey_size,
       p_is_active: draft.is_active,
+      p_is_football: draft.is_football,
       p_chest_in: chest ? Number(chest) : undefined,
       p_admission_no: draft.admission_no.trim() || undefined,
     });
@@ -1232,7 +1349,7 @@ function PlayersTab({
   }
 
   async function importPlayers() {
-    const rows = parsePlayerLines(paste);
+    const rows = parsePlayerLines(paste, allFootball);
     if (rows.errors.length) return notify(rows.errors.join(" "), true);
     if (rows.players.length === 0)
       return notify("Paste at least one line: admission number, name, grade.", true);
@@ -1244,6 +1361,7 @@ function PlayersTab({
     if (error) return notify(error.message, true);
     notify(`${data} students added or updated.`);
     setPaste("");
+    setAllFootball(false);
     await reload();
   }
 
@@ -1265,15 +1383,34 @@ function PlayersTab({
             placeholder="Search name, admission no., grade, order…"
           />
         </div>
-        <button type="button" onClick={() => setDraft({ ...emptyDraft })} className="pill">
+        <button
+          type="button"
+          onClick={() => setDraft({ ...emptyDraft, is_football: filter.startsWith("football") })}
+          className="pill"
+        >
           <Plus className="size-4" /> Add student
         </button>
+      </div>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {PLAYER_FILTERS.map(([key, label, test]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={filter === key}
+            onClick={() => onFilter(key)}
+            className={`rounded-md border px-3 py-1.5 font-condensed text-[13px] font-semibold tracking-[0.1em] uppercase ${
+              filter === key ? "border-brand bg-brand-soft text-brand" : "border-line text-ink-2"
+            }`}
+          >
+            {label} <span className="tabular-nums">{players.filter(test).length}</span>
+          </button>
+        ))}
       </div>
 
       <TableWrap>
         <thead>
           <tr>
-            {["Adm. no.", "Student", "Grade", "Order", ""].map((h) => (
+            {["Adm. no.", "Student", "Grade", "Team", "Order", ""].map((h) => (
               <Th key={h}>{h}</Th>
             ))}
           </tr>
@@ -1281,7 +1418,7 @@ function PlayersTab({
         <tbody>
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={5} className="p-10 text-center text-ink-2">
+              <td colSpan={6} className="p-10 text-center text-ink-2">
                 {players.length === 0
                   ? "No students yet. Add them one by one, or paste the full list below."
                   : "No students match."}
@@ -1304,7 +1441,18 @@ function PlayersTab({
                   </Td>
                   <Td>{gradeLabel(p.class_name)}</Td>
                   <Td>
-                    {tag ? (
+                    {p.is_football ? (
+                      <Tag tone="team">Football</Tag>
+                    ) : p.order_count > 0 ? (
+                      <Tag tone="info">New player</Tag>
+                    ) : (
+                      <span className="text-ink-3">—</span>
+                    )}
+                  </Td>
+                  <Td>
+                    {p.order_count > 1 ? (
+                      <Tag tone="ok">{p.order_count} orders</Tag>
+                    ) : tag ? (
                       <Tag tone={tag.tone}>{tag.label}</Tag>
                     ) : (
                       <Tag tone="plain">Not ordered</Tag>
@@ -1326,6 +1474,7 @@ function PlayersTab({
                             chest_in: p.chest_in != null ? String(Number(p.chest_in)) : "",
                             jersey_size: p.jersey_size ?? "",
                             is_active: p.is_active,
+                            is_football: p.is_football,
                           })
                         }
                         className="pill pill-ghost pill-sm"
@@ -1356,7 +1505,8 @@ function PlayersTab({
           Copy the student list from Excel (with its header row) and paste it here, or upload it
           saved as CSV. Only <b>Admission Number, Student Name and Class</b> are saved; other
           columns such as phone numbers are ignored. A student whose admission number is already
-          here is updated, not added twice. Parents choose the jersey number, name and size.
+          here is updated, not added twice. Parents choose the jersey number, name and size. A
+          Football column (Yes / No) sets the football team; without one, the team stays as it is.
         </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={downloadTemplate} className="pill pill-dark pill-sm">
@@ -1385,14 +1535,25 @@ function PlayersTab({
           }
           className="field-input font-mono text-[13px]"
         />
-        {paste.trim() && <ImportPreview text={paste} />}
+        <label className="flex items-center gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            checked={allFootball}
+            onChange={(e) => setAllFootball(e.target.checked)}
+            className="size-[18px] accent-[var(--orange)]"
+          />
+          Everyone in this list plays football
+        </label>
+        {paste.trim() && <ImportPreview text={paste} allFootball={allFootball} />}
         <button
           type="button"
           disabled={busy || !paste.trim()}
           onClick={() => void importPlayers()}
           className="pill justify-self-start"
         >
-          {busy ? "Saving…" : `Save ${parsePlayerLines(paste).players.length || ""} students`}
+          {busy
+            ? "Saving…"
+            : `Save ${parsePlayerLines(paste, allFootball).players.length || ""} students`}
         </button>
       </div>
 
@@ -1430,6 +1591,15 @@ function PlayersTab({
                 className="size-[18px] accent-[var(--orange)]"
               />
               Show to parents
+            </label>
+            <label className="flex items-center gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={draft.is_football}
+                onChange={(e) => setDraft({ ...draft, is_football: e.target.checked })}
+                className="size-[18px] accent-[var(--orange)]"
+              />
+              Football team
             </label>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
@@ -1562,10 +1732,10 @@ function CashModal({
   );
 }
 
-const TEMPLATE_HEADER = "Admission Number,Student Name,Class & Sec";
+const TEMPLATE_HEADER = "Admission Number,Student Name,Class & Sec,Football";
 
 function downloadTemplate() {
-  const csv = `${TEMPLATE_HEADER}\n46962026,KUSHAL R,GRADE_VI-A\n45782026,JENITA MARY V,LKG-A\n`;
+  const csv = `${TEMPLATE_HEADER}\n46962026,KUSHAL R,GRADE_VI-A,Yes\n45782026,JENITA MARY V,LKG-A,No\n`;
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   const a = document.createElement("a");
   a.href = url;
@@ -1580,6 +1750,9 @@ const COLUMN_MATCHERS = {
   full_name: /student\s*name|^name$/i,
   class_name: /class|grade/i,
 } as const;
+const FOOTBALL_HEADER = /football|sport|team/i;
+const YES = /^(yes|y|true|1|football)$/i;
+const NO = /^(no|n|false|0)?$/i;
 
 /**
  * Reads the student list pasted from Excel (tabs) or a CSV file. With a header row, the
@@ -1587,8 +1760,13 @@ const COLUMN_MATCHERS = {
  * (date of birth, phone numbers…) is ignored. Without one, the columns are taken as
  * admission number, name, class.
  */
-function parsePlayerLines(text: string) {
-  const players: { admission_no: string; full_name: string; class_name: string }[] = [];
+function parsePlayerLines(text: string, allFootball = false) {
+  const players: {
+    admission_no: string;
+    full_name: string;
+    class_name: string;
+    is_football?: boolean;
+  }[] = [];
   const errors: string[] = [];
   const lines = text
     .split(/\r?\n/)
@@ -1598,6 +1776,7 @@ function parsePlayerLines(text: string) {
   if (lines.length === 0) return { players, errors };
 
   let cols = { admission_no: 0, full_name: 1, class_name: 2 };
+  let footballCol = -1;
   const header = lines[0]!;
   const found = (Object.keys(COLUMN_MATCHERS) as (keyof typeof COLUMN_MATCHERS)[]).map((k) => [
     k,
@@ -1605,11 +1784,13 @@ function parsePlayerLines(text: string) {
   ]) as [keyof typeof cols, number][];
   const hasHeader = found.some(([, i]) => i >= 0);
   if (hasHeader) {
-    if (found.some(([, i]) => i < 0)) {
-      errors.push("The header row needs Admission Number, Student Name and Class columns.");
+    const missing = found.filter(([k, i]) => i < 0 && k !== "class_name");
+    if (missing.length) {
+      errors.push("The header row needs Admission Number and Student Name columns.");
       return { players, errors };
     }
     cols = Object.fromEntries(found) as typeof cols;
+    footballCol = header.findIndex((h) => FOOTBALL_HEADER.test(h));
   }
 
   lines.slice(hasHeader ? 1 : 0).forEach((cells, i) => {
@@ -1620,14 +1801,31 @@ function parsePlayerLines(text: string) {
       errors.push(`Line ${i + 1}: "${admission_no}" doesn't look like an admission number.`);
       return;
     }
-    players.push({ admission_no, full_name, class_name: cells[cols.class_name] ?? "" });
+    let class_name = cols.class_name >= 0 ? (cells[cols.class_name] ?? "") : "";
+    let is_football: boolean | undefined;
+    if (footballCol >= 0) {
+      const v = cells[footballCol] ?? "";
+      if (YES.test(v)) is_football = true;
+      else if (NO.test(v)) is_football = false;
+    } else if (!hasHeader && /^football$/i.test(class_name)) {
+      // A pasted sports list (admission no., name, "Football", …): the third cell is the sport.
+      is_football = true;
+      class_name = "";
+    }
+    if (allFootball) is_football = true;
+    players.push({
+      admission_no,
+      full_name,
+      class_name,
+      ...(is_football != null && { is_football }),
+    });
   });
   return { players, errors };
 }
 
 /** Shows the first rows as they will be saved. */
-function ImportPreview({ text }: { text: string }) {
-  const { players, errors } = parsePlayerLines(text);
+function ImportPreview({ text, allFootball }: { text: string; allFootball: boolean }) {
+  const { players, errors } = parsePlayerLines(text, allFootball);
   return (
     <div className="grid gap-2">
       {errors.map((e) => (
@@ -1640,7 +1838,7 @@ function ImportPreview({ text }: { text: string }) {
           <table className="w-full min-w-[420px] text-left text-sm">
             <thead>
               <tr>
-                {["Adm. no.", "Student", "Grade"].map((h) => (
+                {["Adm. no.", "Student", "Grade", "Football"].map((h) => (
                   <Th key={h}>{h}</Th>
                 ))}
               </tr>
@@ -1650,7 +1848,8 @@ function ImportPreview({ text }: { text: string }) {
                 <tr key={i} className="border-b border-line last:border-0">
                   <Td>{p.admission_no || "—"}</Td>
                   <Td>{p.full_name}</Td>
-                  <Td>{gradeLabel(p.class_name)}</Td>
+                  <Td>{p.class_name ? gradeLabel(p.class_name) : "Keep"}</Td>
+                  <Td>{p.is_football == null ? "Keep" : p.is_football ? "Yes" : "No"}</Td>
                 </tr>
               ))}
             </tbody>
@@ -2062,6 +2261,8 @@ function exportCsv(orders: JerseyOrder[]) {
     "Student",
     "Admission no.",
     "Grade",
+    "Team",
+    "Set",
     "Number",
     "Print name",
     "Size",
@@ -2082,6 +2283,8 @@ function exportCsv(orders: JerseyOrder[]) {
       o.player_name,
       o.admission_no,
       gradeLabel(o.class_name),
+      o.player_id ? (o.is_football ? "Football" : "New player") : "",
+      o.set_no ?? "",
       o.jersey_number,
       o.print_name,
       o.jersey_size,
