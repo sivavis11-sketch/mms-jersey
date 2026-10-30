@@ -30,7 +30,12 @@ export type StudentMatch = {
   full_name: string;
   class_name: string | null;
   admission_no: string | null;
+  /** The child's latest live order, and how many live orders they have. */
   order_state: OrderState;
+  order_count: number;
+  last_order_id: string | null;
+  last_jersey_number: number | null;
+  last_jersey_size: string | null;
 };
 
 export type AdminPlayer = {
@@ -46,6 +51,8 @@ export type AdminPlayer = {
   order_id: string | null;
   order_state: OrderState;
   payment_method: string | null;
+  is_football: boolean;
+  order_count: number;
 };
 
 export type JerseyOrder = {
@@ -73,6 +80,9 @@ export type JerseyOrder = {
   admin_notes: string | null;
   receipt_no: string | null;
   received_from: string | null;
+  /** Admin list only: whether the child is on the football team, and which of their orders this is (1, 2…). */
+  is_football?: boolean;
+  set_no?: number | null;
 };
 
 type Fn<Args, Returns> = { Args: Args; Returns: Returns };
@@ -92,6 +102,7 @@ export type Database = {
           p_jersey_number: number;
           p_print_name: string;
           p_jersey_size: string;
+          p_new_set?: boolean | undefined;
         },
         JerseyOrder & { access_token: string }
       >;
@@ -119,6 +130,7 @@ export type Database = {
           p_is_active?: boolean | undefined;
           p_chest_in?: number | undefined;
           p_admission_no?: string | undefined;
+          p_is_football?: boolean | undefined;
         },
         string
       >;

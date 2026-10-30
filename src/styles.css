@@ -274,6 +274,14 @@
     background: var(--orange);
     color: #fff;
   }
+  .tag-team {
+    background: rgba(255, 77, 18, 0.16);
+    color: var(--orange);
+  }
+  .tag-info {
+    background: #10202e;
+    color: #7cc4ff;
+  }
 }
 
 @keyframes ken {

@@ -121,7 +121,7 @@ export const MANUAL_ORDER_STATUSES = [
   "cancelled",
 ];
 
-export type Tone = "ok" | "warn" | "bad" | "plain" | "dark" | "brand";
+export type Tone = "ok" | "warn" | "bad" | "plain" | "dark" | "brand" | "team" | "info";
 
 // Orders placed on this device, so parents can come back and see the status.
 const SAVED_KEY = "mms-jersey-orders";
