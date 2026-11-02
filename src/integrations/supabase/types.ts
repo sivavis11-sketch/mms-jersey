@@ -36,6 +36,8 @@ export type StudentMatch = {
   last_order_id: string | null;
   last_jersey_number: number | null;
   last_jersey_size: string | null;
+  /** The size the coach set from the child's chest size. Null until the coach sets it. */
+  jersey_size: string | null;
 };
 
 export type AdminPlayer = {
@@ -133,6 +135,10 @@ export type Database = {
           p_is_football?: boolean | undefined;
         },
         string
+      >;
+      jersey_admin_set_chest: Fn<
+        { p_id: string; p_chest_in: number | null },
+        { id: string; chest_in: number | null; jersey_size: string | null }
       >;
       jersey_admin_import_players: Fn<{ p_rows: Json }, number>;
       jersey_admin_delete_player: Fn<{ p_id: string }, undefined>;
