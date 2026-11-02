@@ -37,6 +37,7 @@ import {
   MAX_JERSEY_IMAGE_BYTES,
   formatCurrency,
   gradeLabel,
+  sizeForChest,
 } from "@/lib/jersey";
 
 export const Route = createFileRoute("/admin")({
@@ -44,7 +45,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type Tab = "orders" | "receipts" | "players" | "settings";
+type Tab = "orders" | "receipts" | "sizes" | "players" | "settings";
 type PlayerFilter = "all" | "football" | "football-none" | "new";
 
 /** Tags that say who an order is for: a football player, a new player, and which set it is. */
@@ -244,6 +245,7 @@ function AdminPage() {
               [
                 ["orders", `Orders (${orders.length})`],
                 ["receipts", `Cash receipts (${orders.filter(isCashReceipt).length})`],
+                ["sizes", "Chest sizes"],
                 ["players", `Students (${players.length})`],
                 ["settings", "Settings"],
               ] as const
@@ -304,6 +306,17 @@ function AdminPage() {
           {tab === "receipts" && (
             <ReceiptsTab orders={orders} season={settings?.season_label ?? ""} notify={notify} />
           )}
+          {tab === "sizes" && settings && (
+            <ChestSizesTab
+              players={players}
+              settings={settings}
+              onSaved={(id, chest_in, jersey_size) =>
+                setPlayers((rows) =>
+                  rows.map((r) => (r.id === id ? { ...r, chest_in, jersey_size } : r)),
+                )
+              }
+            />
+          )}
           {tab === "players" && settings && (
             <PlayersTab
               players={players}
@@ -320,6 +333,232 @@ function AdminPage() {
         </div>
       </section>
     </Shell>
+  );
+}
+
+/* ------------------------------- Chest sizes ------------------------------- */
+
+type SizeFilter = "football-none" | "football" | "all";
+const SIZE_FILTERS: [SizeFilter, string, (p: AdminPlayer) => boolean][] = [
+  ["football-none", "Football · no size yet", (p) => p.is_football && !p.jersey_size],
+  ["football", "Football · all", (p) => p.is_football],
+  ["all", "All students", () => true],
+];
+const SIZE_ROWS_SHOWN = 100;
+
+/** The coach types each child's chest size; the size chart turns it into the jersey size. */
+function ChestSizesTab({
+  players,
+  settings,
+  onSaved,
+}: {
+  players: AdminPlayer[];
+  settings: JerseySettings;
+  onSaved: (id: string, chest: number | null, size: string | null) => void;
+}) {
+  const [filter, setFilter] = useState<SizeFilter>("football-none");
+  const [search, setSearch] = useState("");
+  // Rows saved in this visit stay in the "no size yet" list, so the coach sees the tick.
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const chart = [...settings.size_chart].sort((a, b) => a.chest - b.chest);
+
+  const q = search.trim().toLowerCase();
+  const test = SIZE_FILTERS.find(([key]) => key === filter)![2];
+  const rows = players.filter(
+    (p) =>
+      p.is_active &&
+      // A search looks through every student, whatever filter is on.
+      (q ? true : savedIds.has(p.id) || test(p)) &&
+      (!q ||
+        [p.full_name, p.admission_no, p.class_name].some((v) =>
+          String(v ?? "")
+            .toLowerCase()
+            .includes(q),
+        )),
+  );
+
+  return (
+    <>
+      <div className="mb-3 rounded-xl border border-line bg-panel p-4 sm:p-5">
+        <div className="label text-ink-2">Your size chart · jersey chest, armpit to armpit</div>
+        {chart.length === 0 ? (
+          <p className="mt-2 text-sm text-bad">
+            No size chart yet. Add it in Settings so chest sizes can be turned into jersey sizes.
+          </p>
+        ) : (
+          <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1.5">
+            {chart.map((r) => (
+              <div
+                key={r.size}
+                className="rounded-lg border border-line bg-ink px-2 py-2 text-center"
+              >
+                <div className="text-[11px] text-ink-3">{r.chest} in</div>
+                <div className="font-display text-xl">{r.size}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-[12.5px] text-ink-3">
+          A child between two sizes gets the bigger one. For example, 15 in gets size{" "}
+          {sizeForChest(chart, 15) ?? "—"}. Parents can't change the size you set.
+        </p>
+      </div>
+
+      <div className="mb-3">
+        <SearchBox
+          value={search}
+          onChange={setSearch}
+          placeholder="Search a player by name, admission no. or grade…"
+        />
+      </div>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {SIZE_FILTERS.map(([key, label, t]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={filter === key}
+            onClick={() => {
+              setFilter(key);
+              setSavedIds(new Set());
+            }}
+            className={`rounded-md border px-3 py-1.5 font-condensed text-[13px] font-semibold tracking-[0.1em] uppercase ${
+              filter === key ? "border-brand bg-brand-soft text-brand" : "border-line text-ink-2"
+            }`}
+          >
+            {label}{" "}
+            <span className="tabular-nums">
+              {players.filter((p) => p.is_active && t(p)).length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-line bg-panel">
+        <table className="w-full min-w-[560px] text-left text-sm">
+          <thead>
+            <tr>
+              {["Student", "Adm. no.", "Grade", "Chest (in)", "Jersey size"].map((h) => (
+                <Th key={h}>{h}</Th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="p-10 text-center text-ink-2">
+                  {q
+                    ? "No player matches. Check the spelling or admission no."
+                    : filter === "football-none"
+                      ? "Every football player has a size."
+                      : "No students here."}
+                </td>
+              </tr>
+            ) : (
+              rows.slice(0, SIZE_ROWS_SHOWN).map((p) => (
+                <ChestRow
+                  key={p.id}
+                  player={p}
+                  chart={chart}
+                  onSaved={(chest, size) => {
+                    setSavedIds((ids) => new Set(ids).add(p.id));
+                    onSaved(p.id, chest, size);
+                  }}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > SIZE_ROWS_SHOWN && (
+        <p className="mt-3 text-sm text-ink-3">
+          Showing {SIZE_ROWS_SHOWN} of {rows.length}. Search to find a player.
+        </p>
+      )}
+    </>
+  );
+}
+
+function ChestRow({
+  player,
+  chart,
+  onSaved,
+}: {
+  player: AdminPlayer;
+  chart: { size: string; chest: number }[];
+  onSaved: (chest: number | null, size: string | null) => void;
+}) {
+  const stored = player.chest_in != null ? String(Number(player.chest_in)) : "";
+  const [value, setValue] = useState(stored);
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState("");
+  const chest = Number(value);
+  const preview = value ? sizeForChest(chart, chest) : null;
+
+  async function save() {
+    if (value === stored) return;
+    if (value && !(chest >= 5 && chest <= 40)) {
+      setState("error");
+      setError("Inches, e.g. 15.5");
+      return;
+    }
+    setState("saving");
+    const { data, error: rpcError } = await supabase.rpc("jersey_admin_set_chest", {
+      p_id: player.id,
+      p_chest_in: value ? chest : null,
+    });
+    if (rpcError || !data) {
+      setState("error");
+      setError(rpcError?.message ?? "Not saved");
+      return;
+    }
+    setState("saved");
+    onSaved(data.chest_in, data.jersey_size);
+  }
+
+  return (
+    <tr className="border-b border-line last:border-0">
+      <Td>
+        <b>{player.full_name}</b>
+        {player.is_football && (
+          <span className="ml-2 align-middle">
+            <Tag tone="team">Football</Tag>
+          </span>
+        )}
+      </Td>
+      <Td className="font-condensed font-semibold tracking-wide">{player.admission_no ?? "—"}</Td>
+      <Td>{gradeLabel(player.class_name)}</Td>
+      <Td>
+        <input
+          aria-label={`Chest size for ${player.full_name}`}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value.replace(/[^\d.]/g, "").slice(0, 4));
+            setState("idle");
+          }}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          inputMode="decimal"
+          placeholder="—"
+          className="field-input w-20 py-2 text-center"
+        />
+      </Td>
+      <Td>
+        <span className="flex items-center gap-3">
+          <span className={`font-display text-2xl ${preview ? "text-brand" : "text-ink-3"}`}>
+            {preview ?? "—"}
+          </span>
+          {state === "saving" && <span className="text-xs text-ink-3">Saving…</span>}
+          {state === "saved" && (
+            <span className="flex items-center gap-1 text-xs text-ok">
+              <CheckCircle2 className="size-3.5" /> Saved
+            </span>
+          )}
+          {state === "error" && <span className="text-xs text-bad">{error}</span>}
+        </span>
+      </Td>
+    </tr>
   );
 }
 
@@ -2002,11 +2241,6 @@ function SettingsTab({
             checked={form.orders_open}
             onChange={(v) => setForm({ ...form, orders_open: v })}
             label="Orders are open"
-          />
-          <Toggle
-            checked={form.parents_can_change_size}
-            onChange={(v) => setForm({ ...form, parents_can_change_size: v })}
-            label="Parents can change the size"
           />
         </div>
       </div>

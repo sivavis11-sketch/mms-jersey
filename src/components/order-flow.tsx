@@ -23,7 +23,6 @@ import {
   gradeLabel,
   initials,
   saveOrder,
-  sizeForChest,
   type PaymentMethod,
 } from "@/lib/jersey";
 
@@ -65,6 +64,8 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
       setPrint("");
       setSize(null);
     }
+    // The coach sets each child's size; parents can't change it.
+    setSize(s.jersey_size ?? null);
     setStudent(s);
     setNewSet(false);
     setConfirmed(false);
@@ -229,7 +230,7 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
               <p className="mt-2 text-[12.5px] text-ink-3">
                 Number from 0 to 99. Name up to 12 letters, printed in capitals.
               </p>
-              <SizePicker settings={settings} size={size} onChange={setSize} />
+              <CoachSize size={size} />
               <Actions onBack={() => go(0)}>
                 <PillButton type="button" disabled={!detailsOk} onClick={() => go(2)}>
                   Continue
@@ -263,7 +264,7 @@ export function OrderFlow({ settings }: { settings: JerseySettings }) {
                   onChange={(e) => setConfirmed(e.target.checked)}
                   className="mt-0.5 size-[18px] flex-none accent-[var(--orange)]"
                 />
-                The number, name and size are correct.
+                The number and name are correct.
               </label>
               <p className="mt-3 text-[12.5px] text-ink-3">
                 Next you'll see how to pay. You can also pay later from "My orders", or in cash at
@@ -338,65 +339,28 @@ type PlacedOrder = JerseyOrder & { access_token: string };
 // Letters, spaces, dots, apostrophes and hyphens; must start with a letter. Same rule as the database.
 const PRINT_NAME_RE = /^[A-Z][A-Z .'-]{0,11}$/;
 
-function SizePicker({
-  settings,
-  size,
-  onChange,
-}: {
-  settings: JerseySettings;
-  size: string | null;
-  onChange: (s: string) => void;
-}) {
-  const [chest, setChest] = useState("");
-  const hasChart = settings.size_chart.length > 0;
+/** The size the coach set from the child's chest size. Parents see it but can't change it. */
+function CoachSize({ size }: { size: string | null }) {
   return (
-    <div className="mt-6">
-      <div className="label text-ink-2">Jersey size</div>
-      {hasChart && (
-        <label className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-line bg-ink px-4 py-3">
-          <span>
-            <span className="block text-sm font-semibold">Chest size in inches (optional)</span>
-            <span className="text-[12.5px] text-ink-3">
-              Measure armpit to armpit. We pick the size for you.
-            </span>
-          </span>
-          <input
-            id="chest-in"
-            value={chest}
-            onChange={(e) => {
-              const v = e.target.value.replace(/[^\d.]/g, "").slice(0, 4);
-              setChest(v);
-              const picked = sizeForChest(settings.size_chart, Number(v));
-              if (picked) onChange(picked);
-            }}
-            inputMode="decimal"
-            placeholder="15"
-            className="field-input w-20 flex-none text-center"
-          />
-        </label>
-      )}
-      <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(56px,1fr))] gap-1.5">
-        {settings.sizes.map((option) => (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={size === option}
-            onClick={() => onChange(option)}
-            className={`rounded-lg border py-3.5 font-condensed text-base tracking-wide ${
-              size === option
-                ? "border-brand bg-brand-soft text-brand"
-                : "border-line text-white/55 hover:border-white/40"
-            }`}
-          >
-            {option}
-          </button>
-        ))}
-      </div>
-      {size && chest && Number(chest) > 0 && (
-        <p className="mt-2 text-[12.5px] text-ink-3">
-          Chest {chest} in → size {size}. You can tap another size.
-        </p>
-      )}
+    <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border border-line bg-ink px-4 py-3">
+      <span>
+        <span className="label block text-ink-2">Jersey size</span>
+        <span className="text-[12.5px] text-ink-3">Set by the coach</span>
+      </span>
+      <span className="font-display text-3xl text-brand">{size ?? "—"}</span>
+    </div>
+  );
+}
+
+/** Shown instead of the order buttons when the coach hasn't set this child's size yet. */
+function SizeNotSet() {
+  return (
+    <div className="mt-4 rounded-lg border border-warn/40 bg-warn-bg px-4 py-3 text-sm">
+      <div className="label text-warn">Size not set yet</div>
+      <p className="mt-1.5">
+        The coach measures every player and sets the jersey size. Please check back after the next
+        practice.
+      </p>
     </div>
   );
 }
@@ -769,7 +733,9 @@ function FindStep({
           })
         )}
       </div>
-      {selected && selected.order_count > 0 ? (
+      {selected && !selected.jersey_size ? (
+        <SizeNotSet />
+      ) : selected && selected.order_count > 0 ? (
         <AlreadyOrdered student={selected} onNext={onNext} />
       ) : (
         <Actions>
