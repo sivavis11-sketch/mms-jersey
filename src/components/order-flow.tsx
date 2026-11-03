@@ -21,6 +21,7 @@ import {
   buildUpiUri,
   formatCurrency,
   gradeLabel,
+  guideFor,
   initials,
   saveOrder,
   type PaymentMethod,
@@ -341,13 +342,22 @@ const PRINT_NAME_RE = /^[A-Z][A-Z .'-]{0,11}$/;
 
 /** The size the coach set from the child's chest size. Parents see it but can't change it. */
 function CoachSize({ size }: { size: string | null }) {
+  const guide = guideFor(size);
   return (
-    <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border border-line bg-ink px-4 py-3">
-      <span>
-        <span className="label block text-ink-2">Jersey size</span>
-        <span className="text-[12.5px] text-ink-3">Set by the coach</span>
-      </span>
-      <span className="font-display text-3xl text-brand">{size ?? "—"}</span>
+    <div className="mt-6">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-ink px-4 py-3">
+        <span>
+          <span className="label block text-ink-2">Jersey size</span>
+          <span className="text-[12.5px] text-ink-3">Set by the coach</span>
+        </span>
+        <span className="font-display text-3xl text-brand">{size ?? "—"}</span>
+      </div>
+      <p className="mt-2 text-[12.5px] text-ink-3">
+        {guide && `Length ${guide.length} in · ${guide.fit} `}
+        <a href="#size-guide" className="text-brand underline underline-offset-2">
+          See the size guide
+        </a>
+      </p>
     </div>
   );
 }
