@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 
 import { JerseyArt, SiteFooter, SiteHeader } from "@/components/brand";
 import { OrderFlow } from "@/components/order-flow";
-import { SizeGuideTable } from "@/components/size-guide";
 import mmsJersey from "@/assets/mms-jersey.jpg";
 import { supabase } from "@/integrations/supabase/client";
 import type { JerseySettings } from "@/integrations/supabase/types";
@@ -182,12 +181,6 @@ function Landing() {
               </span>
               <span className="font-display text-2xl text-brand">{price}</span>
             </div>
-            <a
-              href="#size-guide"
-              className="mt-4 block text-sm text-brand underline underline-offset-4"
-            >
-              See the size guide
-            </a>
             <button
               type="button"
               onClick={scrollToOrder}
@@ -196,18 +189,6 @@ function Landing() {
               Order your kit
             </button>
           </aside>
-        </div>
-      </section>
-
-      {/* Size guide */}
-      <section id="size-guide" className="band scroll-mt-2 border-t border-line">
-        <div className="inner py-14">
-          <p className="label text-brand">Size guide</p>
-          <h2 className="h-lg mt-2">Recommended jersey sizes</h2>
-          <p className="mt-3 mb-6 max-w-2xl text-sm text-ink-2">
-            The coach measures every player and sets the size from this chart.
-          </p>
-          <SizeGuideTable />
         </div>
       </section>
 

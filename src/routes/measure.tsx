@@ -204,105 +204,111 @@ function MeasurePage() {
         </p>
       )}
 
-      {current ? (
-        <div className="card mt-4 grid gap-4">
-          <div className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-3">
-            <span className="grid size-11 place-items-center rounded-lg bg-paper font-display text-brand">
-              {initials(current.full_name)}
-            </span>
-            <span className="min-w-0">
-              <b className="block truncate text-[17px]">{current.full_name}</b>
-              <span className="text-xs text-ink-3">
-                Adm. {current.admission_no ?? "—"} · {gradeLabel(current.class_name)}
-                {current.is_football ? " · Football" : ""}
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+        {current ? (
+          <div className="card grid gap-4">
+            <div className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-lg bg-paper font-display text-brand">
+                {initials(current.full_name)}
               </span>
-            </span>
-          </div>
-
-          <div>
-            <div className="label text-ink-2">Chest, armpit to armpit (inches)</div>
-            <div className="mt-2 grid grid-cols-[56px_minmax(0,1fr)_56px] items-center gap-2">
-              <button
-                type="button"
-                aria-label="Half an inch less"
-                onClick={() => nudge(-STEP)}
-                className="grid h-14 place-items-center rounded-xl border border-line bg-ink"
-              >
-                <Minus className="size-5" />
-              </button>
-              <input
-                aria-label="Chest size in inches"
-                value={chest}
-                onChange={(e) => setChest(e.target.value.replace(/[^\d.]/g, "").slice(0, 4))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void saveAndNext();
-                }}
-                inputMode="decimal"
-                placeholder="—"
-                className="h-[72px] w-full rounded-xl border-2 border-brand bg-ink text-center font-display text-[40px] focus:outline-none"
-              />
-              <button
-                type="button"
-                aria-label="Half an inch more"
-                onClick={() => nudge(STEP)}
-                className="grid h-14 place-items-center rounded-xl border border-line bg-ink"
-              >
-                <Plus className="size-5" />
-              </button>
+              <span className="min-w-0">
+                <b className="block truncate text-[17px]">{current.full_name}</b>
+                <span className="text-xs text-ink-3">
+                  Adm. {current.admission_no ?? "—"} · {gradeLabel(current.class_name)}
+                  {current.is_football ? " · Football" : ""}
+                </span>
+              </span>
             </div>
-            {chest !== "" && !chestOk && (
-              <p className="mt-2 text-xs text-bad">Type the chest in inches, for example 15.5.</p>
-            )}
-          </div>
 
-          <div
-            className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 rounded-xl px-4 py-3.5 ${
-              size ? "bg-brand text-white" : "border border-line bg-ink text-ink-3"
-            }`}
-          >
-            <b className="row-span-2 font-display text-5xl leading-none font-normal">
-              {size ?? "—"}
-            </b>
-            <span className="label">Jersey size</span>
-            <span className="text-sm">
-              {guide ? `Length ${guide.length} in · ${guide.fit}` : "Type the chest size"}
-            </span>
-          </div>
+            <div>
+              <div className="label text-ink-2">Chest, armpit to armpit (inches)</div>
+              <div className="mt-2 grid grid-cols-[56px_minmax(0,1fr)_56px] items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Half an inch less"
+                  onClick={() => nudge(-STEP)}
+                  className="grid h-14 place-items-center rounded-xl border border-line bg-ink"
+                >
+                  <Minus className="size-5" />
+                </button>
+                <input
+                  aria-label="Chest size in inches"
+                  value={chest}
+                  onChange={(e) => setChest(e.target.value.replace(/[^\d.]/g, "").slice(0, 4))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveAndNext();
+                  }}
+                  inputMode="decimal"
+                  placeholder="—"
+                  className="h-[72px] w-full rounded-xl border-2 border-brand bg-ink text-center font-display text-[40px] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  aria-label="Half an inch more"
+                  onClick={() => nudge(STEP)}
+                  className="grid h-14 place-items-center rounded-xl border border-line bg-ink"
+                >
+                  <Plus className="size-5" />
+                </button>
+              </div>
+              {chest !== "" && !chestOk && (
+                <p className="mt-2 text-xs text-bad">Type the chest in inches, for example 15.5.</p>
+              )}
+            </div>
 
-          <button
-            type="button"
-            disabled={!size || saving}
-            onClick={() => void saveAndNext()}
-            className="pill py-4 text-base"
-          >
-            {saving ? "Saving…" : "Save and next player"}
-          </button>
-          {!current.jersey_size && (
-            <button type="button" onClick={skip} className="pill pill-ghost">
-              Skip for now
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="card mt-4 text-center">
-          <p className="font-condensed text-lg tracking-wide uppercase">All done</p>
-          <p className="mt-1 text-sm text-ink-2">
-            {skipped.size
-              ? `Every football player has a size, except ${skipped.size} you skipped.`
-              : "Every football player has a size."}{" "}
-            Search above to change anyone.
-          </p>
-          {skipped.size > 0 && (
+            <div
+              className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 rounded-xl px-4 py-3.5 ${
+                size ? "bg-brand text-white" : "border border-line bg-ink text-ink-3"
+              }`}
+            >
+              <b className="row-span-2 font-display text-5xl leading-none font-normal">
+                {size ?? "—"}
+              </b>
+              <span className="label">Jersey size</span>
+              <span className="text-sm">
+                {guide ? `Length ${guide.length} in · ${guide.fit}` : "Type the chest size"}
+              </span>
+            </div>
+
             <button
               type="button"
-              onClick={() => setSkipped(new Set())}
-              className="pill pill-ghost mt-4"
+              disabled={!size || saving}
+              onClick={() => void saveAndNext()}
+              className="pill py-4 text-base"
             >
-              Show skipped players
+              {saving ? "Saving…" : "Save and next player"}
             </button>
-          )}
-        </div>
-      )}
+            {!current.jersey_size && (
+              <button type="button" onClick={skip} className="pill pill-ghost">
+                Skip for now
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="card text-center">
+            <p className="font-condensed text-lg tracking-wide uppercase">All done</p>
+            <p className="mt-1 text-sm text-ink-2">
+              {skipped.size
+                ? `Every football player has a size, except ${skipped.size} you skipped.`
+                : "Every football player has a size."}{" "}
+              Search above to change anyone.
+            </p>
+            {skipped.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSkipped(new Set())}
+                className="pill pill-ghost mt-4"
+              >
+                Show skipped players
+              </button>
+            )}
+          </div>
+        )}
+        <aside className="rounded-xl border border-line bg-panel p-4 sm:p-5">
+          <h2 className="label mb-3 text-brand">Size guide</h2>
+          <SizeGuideTable highlight={size} />
+        </aside>
+      </div>
 
       <h2 className="label mt-8 text-ink-2">Still to measure · {queue.length}</h2>
       <div className="mt-2 grid gap-1.5">
@@ -347,14 +353,6 @@ function MeasurePage() {
         </>
       )}
 
-      <details className="mt-8 rounded-xl border border-line bg-panel p-4">
-        <summary className="cursor-pointer font-condensed text-sm font-semibold tracking-[0.16em] uppercase">
-          Size guide
-        </summary>
-        <div className="mt-4">
-          <SizeGuideTable highlight={size} />
-        </div>
-      </details>
       <p className="mt-6 pb-12 text-center text-xs text-ink-3">
         <Link to="/admin" className="underline">
           Back to Admin
@@ -407,7 +405,7 @@ function Frame({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="band">
-        <div className="mx-auto max-w-lg">{children}</div>
+        <div className="mx-auto max-w-6xl">{children}</div>
       </main>
     </div>
   );
