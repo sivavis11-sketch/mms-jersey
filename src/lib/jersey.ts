@@ -144,3 +144,68 @@ export function saveOrder(order: SavedOrder) {
     // Storage can be blocked (private mode). The order is still placed.
   }
 }
+
+/** The coach's recommended jersey size chart, shown to parents and on the measuring screen. */
+export const SIZE_GUIDE = [
+  {
+    age: "5–6 yrs",
+    height: "105–115",
+    size: "26",
+    chest: 12.5,
+    length: 17.5,
+    fit: "Slim athletic fit.",
+  },
+  {
+    age: "6–7 yrs",
+    height: "115–125",
+    size: "28",
+    chest: 13.5,
+    length: 18.5,
+    fit: "Slight growing room.",
+  },
+  { age: "7–8 yrs", height: "120–130", size: "30", chest: 14.5, length: 20, fit: "Balanced fit." },
+  {
+    age: "8–9 yrs",
+    height: "125–135",
+    size: "32",
+    chest: 15.5,
+    length: 22,
+    fit: "Room for movement.",
+  },
+  {
+    age: "9–10 yrs",
+    height: "130–140",
+    size: "34",
+    chest: 16.5,
+    length: 23,
+    fit: "Good active fit.",
+  },
+  {
+    age: "10–11 yrs",
+    height: "135–145",
+    size: "36",
+    chest: 18,
+    length: 24,
+    fit: "Comfortable athletic fit.",
+  },
+  {
+    age: "11–12 yrs",
+    height: "140–150",
+    size: "38",
+    chest: 19,
+    length: 27,
+    fit: "Ideal for taller players.",
+  },
+  { age: "12–13 yrs", height: "145–155", size: "40", chest: 20, length: 28, fit: "Good teen fit." },
+  { age: "13–15 yrs", height: "155–165", size: "42", chest: 21, length: 29, fit: "Good teen fit." },
+] as const;
+
+export const SIZE_GUIDE_NOTES = [
+  "Chest is measured across the jersey, armpit to armpit (not the full way round).",
+  "Height ranges are approximate, for slim or athletic builds.",
+  "If your child is between sizes, the larger size gives more growing room.",
+];
+
+export function guideFor(size: string | null | undefined) {
+  return SIZE_GUIDE.find((r) => r.size === size) ?? null;
+}

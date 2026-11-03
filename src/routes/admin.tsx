@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Receipt,
+  Ruler,
   Share2,
   RefreshCw,
   RotateCcw,
@@ -157,6 +158,9 @@ function AdminPage() {
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link to="/measure" className="pill pill-sm">
+              <Ruler className="size-3.5" /> Measure players
+            </Link>
             <button type="button" onClick={() => void loadAll()} className="pill pill-sm pill-dark">
               <RefreshCw className="size-3.5" /> Refresh
             </button>
@@ -404,6 +408,20 @@ function ChestSizesTab({
         </p>
       </div>
 
+      <Link
+        to="/measure"
+        className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand-soft px-4 py-3 text-sm"
+      >
+        <span>
+          <b className="block">Measuring at practice?</b>
+          <span className="text-ink-2">
+            Open the phone screen: one player at a time, then Save and next.
+          </span>
+        </span>
+        <span className="pill pill-sm flex-none">
+          <Ruler className="size-3.5" /> Measure players
+        </span>
+      </Link>
       <div className="mb-3">
         <SearchBox
           value={search}
